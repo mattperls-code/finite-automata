@@ -3,82 +3,99 @@
 
 #include <string>
 #include <vector>
-#include <unordered_set>
 #include <unordered_map>
+#include <unordered_set>
+#include <optional>
+#include <variant>
+#include <memory>
 
-class TransitionToken
-{
-    private:
-        bool isChar;
-        char c;
-        
-        TransitionToken(): isChar(false), c() {};
-        TransitionToken(char c): isChar(true), c(c) {};
-    
-    public:
-        bool isLambda();
-        char getChar();
+typedef std::optional<char> Letter; // nullopt for lambda
 
-        static TransitionToken lambda();
-        static TransitionToken character(char c);
-};
-
-class NamedEdge
+class Edge
 {
     public:
-        std::string startState;
-        std::string endState;
-        TransitionToken transitionToken;
+        std::string start;
+        std::string end;
+        Letter letter;
 
-        NamedEdge(std::string startState, std::string endState, TransitionToken transitionToken): startState(startState), endState(endState), transitionToken(transitionToken) {};
+        Edge(std::string start, std::string end, Letter letter): start(start), end(end), letter(letter) {};
 };
 
-class IndexedEdge
-{
-    public:
-        int startState;
-        int endState;
-        TransitionToken transitionToken;
-
-        IndexedEdge(int startState, int endState, TransitionToken transitionToken): startState(startState), endState(endState), transitionToken(transitionToken) {};
-};
+class RegularExpression;
 
 class FiniteAutomata
 {
     private:
-        std::unordered_set<char> alphabet;
-        
-        std::vector<std::string> stateIndexToNameMap;
-        std::unordered_map<std::string, int> stateNameToIndexMap;
+        std::unordered_set<std::string> states;
+        std::string startState;
+        std::unordered_set<std::string> acceptingStates;
+        std::vector<Edge> edges;
 
-        std::string startStateName;
-        int startStateIndex;
+        FiniteAutomata(std::unordered_set<std::string> states, std::string startState, std::unordered_set<std::string> acceptingStates, std::vector<Edge> edges);
 
-        std::unordered_set<std::string> finalStateNames;
-        std::unordered_set<int> finalStateIndices;
+        // [startState][letter] = set<endState>
+        std::unordered_map<std::string, std::unordered_map<Letter, std::unordered_set<std::string>>> transitionTable;
 
-        std::vector<NamedEdge> namedEdges;
-        std::vector<IndexedEdge> indexedEdges;
-        
-        // [startStateIndex][edgeIndex] = { startState, endState, transitionToken }
-        std::vector<std::vector<IndexedEdge>> edgeTable;
+        // [endState][letter] = set<startState>
+        std::unordered_map<std::string, std::unordered_map<Letter, std::unordered_set<std::string>>> invertedTransitionTable;
 
-        bool hasState(std::string stateName);
+        // states with an edge starting from the given state
+        std::unordered_set<std::string> getStatesDirectlyStartingAt(std::string state);
+        std::unordered_set<std::string> getStatesDirectlyStartingAt(std::string state, Letter letter);
 
-        int nextState(int currentStateIndex, char c);
-    
+        // states reachable starting from the given state
+        std::unordered_set<std::string> getStatesTransitivelyStartingAt(std::string state);
+        std::unordered_set<std::string> getStatesTransitivelyStartingAt(std::string state, Letter letter);
+
+        // states with an edge ending at the given state
+        std::unordered_set<std::string> getStatesDirectlyEndingAt(std::string state);
+        std::unordered_set<std::string> getStatesDirectlyEndingAt(std::string state, Letter letter);
+
+        // states reachable ending at the given state
+        std::unordered_set<std::string> getStatesTransitivelyEndingAt(std::string state);
+        std::unordered_set<std::string> getStatesTransitivelyEndingAt(std::string state, Letter letter);
+
+        std::unordered_map<std::string, int> getMinDfaEquivalenceClassIndexes();
+
     public:
-        FiniteAutomata(std::unordered_set<char> alphabet, std::unordered_set<std::string> stateNames, std::string startStateName, std::unordered_set<std::string> finalStateNames, std::vector<NamedEdge> namedEdges);
+        static FiniteAutomata create(std::unordered_set<std::string> states, std::string startState, std::unordered_set<std::string> acceptingStates, std::vector<Edge> edges);
 
-        bool isValidDFA();
+        bool isDeterministic();
 
         bool matches(std::string str);
 
+        FiniteAutomata lnfa2nfa();
+
         FiniteAutomata nfa2dfa();
 
-        FiniteAutomata minimizeDFA();
+        FiniteAutomata dfa2minDfa();
+
+        RegularExpression dfa2re();
 
         std::string toString();
+};
+
+class RegularExpression
+{
+    private:
+        enum Operation { NONE, CONCAT, PLUS, STAR };
+
+        Operation operation;
+
+        std::variant<std::monostate, char, std::unique_ptr<RegularExpression>> leftOperand;
+        std::variant<std::monostate, char, std::unique_ptr<RegularExpression>> rightOperand;
+
+    public:
+        RegularExpression(): operation(NONE), leftOperand(), rightOperand() {};
+        RegularExpression(char letter);
+        
+        static RegularExpression concat(RegularExpression re1, RegularExpression re2);
+        static RegularExpression plus(RegularExpression re1, RegularExpression re2);
+        static RegularExpression star(RegularExpression re);
+
+        std::string toString();
+
+        static RegularExpression fromString(std::string str);
 };
 
 #endif

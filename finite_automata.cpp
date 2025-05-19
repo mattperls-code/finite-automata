@@ -1,224 +1,299 @@
 #include <stdexcept>
-#include <functional>
+#include <queue>
 #include <iostream>
 
-#include "./finite_automata.hpp"
+#include "finite_automata.hpp"
 
-bool TransitionToken::isLambda()
+FiniteAutomata::FiniteAutomata(std::unordered_set<std::string> states, std::string startState, std::unordered_set<std::string> acceptingStates, std::vector<Edge> edges)
 {
-    return !this->isChar;
-};
+    this->states = states;
 
-char TransitionToken::getChar()
-{
-    if (this->isLambda()) throw std::runtime_error("getChar called on lambda transition token");
+    this->startState = startState;
+    if (!this->states.contains(this->startState)) throw std::runtime_error("FiniteAutomata constructor: start refers to unknown state");
 
-    return this->c;
-};
-
-TransitionToken TransitionToken::lambda()
-{
-    return TransitionToken();
-};
-
-TransitionToken TransitionToken::character(char c)
-{
-    return TransitionToken(c);
-};
-
-bool FiniteAutomata::hasState(std::string stateName)
-{
-    return this->stateNameToIndexMap.contains(stateName);
-};
-
-FiniteAutomata::FiniteAutomata(std::unordered_set<char> alphabet, std::unordered_set<std::string> stateNames, std::string startStateName, std::unordered_set<std::string> finalStateNames, std::vector<NamedEdge> namedEdges)
-{
-    this->alphabet = alphabet;
-
-    if (stateNames.empty()) throw std::runtime_error("no states provided in finite automata constructor call");
-    
-    for (auto name : stateNames) {
-        this->stateNameToIndexMap[name] = this->stateIndexToNameMap.size();
-        this->stateIndexToNameMap.push_back(name);
+    this->acceptingStates = acceptingStates;
+    for (auto acceptingState : this->acceptingStates) {
+        if (!this->states.contains(acceptingState)) throw std::runtime_error("FiniteAutomata constuctor: accepting state refers to unknown state");
     }
 
-    if (!this->hasState(startStateName)) throw std::runtime_error("unknown start state in finite automata constructor call");
+    this->edges = edges;
 
-    this->startStateName = startStateName;
-    this->startStateIndex = this->stateNameToIndexMap[this->startStateName];
+    for (auto edge : this->edges) {
+        if (!this->states.contains(edge.start) || !this->states.contains(edge.end)) throw std::runtime_error("FiniteAutomata constructor: edge refers to unknown state");
 
-    for (auto finalStateName : finalStateNames) {
-        if (!this->hasState(finalStateName)) throw std::runtime_error("unknown final state in finite automata constructor call");
-
-        this->finalStateNames.insert(finalStateName);
-        this->finalStateIndices.insert(this->stateNameToIndexMap[finalStateName]);
+        this->transitionTable[edge.start][edge.letter].insert(edge.end);
+        this->invertedTransitionTable[edge.end][edge.letter].insert(edge.start);
     }
-
-    for (auto namedEdge : namedEdges) {
-        if (!this->hasState(namedEdge.startState)) throw std::runtime_error("unknown start state in named edge in finite automata constructor call");
-        if (!this->hasState(namedEdge.endState)) throw std::runtime_error("unknown end state in named edge in finite automata constructor call");
-
-        if (!namedEdge.transitionToken.isLambda() && !this->alphabet.contains(namedEdge.transitionToken.getChar())) throw std::runtime_error("unknown transition token character in named edge in finite automata constructor call");
-
-        this->namedEdges.push_back(namedEdge);
-        this->indexedEdges.push_back(IndexedEdge(
-            this->stateNameToIndexMap[namedEdge.startState],
-            this->stateNameToIndexMap[namedEdge.endState],
-            namedEdge.transitionToken
-        ));
-    }
-
-    this->edgeTable.resize(this->stateIndexToNameMap.size());
-
-    for (auto indexedEdge : this->indexedEdges) this->edgeTable[indexedEdge.startState].push_back(indexedEdge);
 };
 
-bool FiniteAutomata::isValidDFA()
+FiniteAutomata FiniteAutomata::create(std::unordered_set<std::string> states, std::string startState, std::unordered_set<std::string> acceptingStates, std::vector<Edge> edges)
 {
-    for (auto outgoingEdgesSet : this->edgeTable) {
-        std::unordered_set<char> transitionTokenCharacters;
+    for (auto state : states) {
+        for (auto c : state) if (!isalnum(c) && c != '_') throw std::runtime_error("FiniteAutomata create: state names must be alphanumeric or underscored");
+    }
 
-        for (auto indexedEdge : outgoingEdgesSet) {
-            if (indexedEdge.transitionToken.isLambda()) return false;
+    return FiniteAutomata(states, startState, acceptingStates, edges);
+};
 
-            char transitionTokenCharacter = indexedEdge.transitionToken.getChar();
-            
-            // nfa if two distinct outgoing edges share a transition token character
-            if (transitionTokenCharacters.contains(transitionTokenCharacter)) return false;
+std::unordered_set<std::string> FiniteAutomata::getStatesDirectlyStartingAt(std::string state)
+{
+    std::unordered_set<std::string> allEndStates;
+
+    for (auto [_, endStates] : this->transitionTable[state]) allEndStates.merge(endStates);
+
+    return allEndStates;
+};
+
+std::unordered_set<std::string> FiniteAutomata::getStatesDirectlyStartingAt(std::string state, Letter letter)
+{
+    std::unordered_set<std::string> allEndStates;
+
+    if (this->transitionTable[state].contains(letter)) allEndStates = this->transitionTable[state][letter];
+
+    return allEndStates;
+};
+
+std::unordered_set<std::string> FiniteAutomata::getStatesTransitivelyStartingAt(std::string state)
+{
+    std::unordered_set<std::string> allEndStates;
+
+    std::queue<std::string> queue;
+    queue.push(state);
+
+    while (!queue.empty()) {
+        auto currentState = queue.front();
+
+        queue.pop();
+
+        if (allEndStates.contains(currentState)) continue;
+
+        allEndStates.insert(currentState);
+
+        for (auto neighbor : this->getStatesDirectlyStartingAt(currentState)) queue.push(neighbor);
+    }
+
+    return allEndStates;
+};
+
+std::unordered_set<std::string> FiniteAutomata::getStatesTransitivelyStartingAt(std::string state, Letter letter)
+{
+    std::unordered_set<std::string> allEndStates;
+
+    std::queue<std::string> queue;
+    queue.push(state);
+
+    while (!queue.empty()) {
+        auto currentState = queue.front();
+
+        queue.pop();
+
+        if (allEndStates.contains(currentState)) continue;
+
+        allEndStates.insert(currentState);
+
+        for (auto neighbor : this->getStatesDirectlyStartingAt(currentState, letter)) queue.push(neighbor);
+    }
+
+    return allEndStates;
+};
+
+std::unordered_set<std::string> FiniteAutomata::getStatesDirectlyEndingAt(std::string state)
+{
+    std::unordered_set<std::string> allStartStates;
+
+    for (auto [_, startStates] : this->invertedTransitionTable[state]) allStartStates.merge(startStates);
+
+    return allStartStates;
+};
+
+std::unordered_set<std::string> FiniteAutomata::getStatesDirectlyEndingAt(std::string state, Letter letter)
+{
+    std::unordered_set<std::string> allStartStates;
+
+    if (this->invertedTransitionTable[state].contains(letter)) allStartStates = this->invertedTransitionTable[state][letter];
+
+    return allStartStates;
+};
+
+std::unordered_set<std::string> FiniteAutomata::getStatesTransitivelyEndingAt(std::string state)
+{
+    std::unordered_set<std::string> allStartStates;
+
+    std::queue<std::string> queue;
+    queue.push(state);
+
+    while (!queue.empty()) {
+        auto currentState = queue.front();
+
+        queue.pop();
+
+        if (allStartStates.contains(currentState)) continue;
+
+        allStartStates.insert(currentState);
+
+        for (auto neighbor : this->getStatesDirectlyEndingAt(currentState)) queue.push(neighbor);
+    }
+
+    return allStartStates;
+};
+
+std::unordered_set<std::string> FiniteAutomata::getStatesTransitivelyEndingAt(std::string state, Letter letter)
+{
+    std::unordered_set<std::string> allStartStates;
+
+    std::queue<std::string> queue;
+    queue.push(state);
+
+    while (!queue.empty()) {
+        auto currentState = queue.front();
+
+        queue.pop();
+
+        if (allStartStates.contains(currentState)) continue;
+
+        allStartStates.insert(currentState);
+
+        for (auto neighbor : this->getStatesDirectlyEndingAt(currentState, letter)) queue.push(neighbor);
+    }
+
+    return allStartStates;
+};
+
+bool FiniteAutomata::isDeterministic()
+{
+    for (auto [_, transitions] : this->transitionTable) {
+        if (transitions.contains({})) return false; // lambda edge
+        
+        for (auto [_, endStates] : transitions) {
+            if (endStates.size() > 1) return false; // multiple edges for same letter
         }
     }
 
     return true;
 };
 
-int FiniteAutomata::nextState(int currentStateIndex, char c)
-{
-    auto currentOutgoingEdges = this->edgeTable[currentStateIndex];
-
-    for (auto outgoingEdge : currentOutgoingEdges) {
-        // assume first found is valid since isValidDFA checked before
-        if (outgoingEdge.transitionToken.getChar() == c) return outgoingEdge.endState;
-    }
-
-    return -1;
-};
-
 bool FiniteAutomata::matches(std::string str)
 {
-    if (!this->isValidDFA()) throw std::runtime_error("string matching is only supported for DFAs");
+    if (!this->isDeterministic()) throw std::runtime_error("FiniteAutomata matches: only callable for DFA");
 
-    int currentStateIndex = this->startStateIndex;
+    std::string state = this->startState;
 
-    for (char c : str) {
-        currentStateIndex = this->nextState(currentStateIndex, c);
+    for (auto letter : str) {
+        auto transitionsAtState = this->transitionTable[state];
 
-        if (currentStateIndex == -1) return false; // no matching outgoing edge
+        if (!transitionsAtState.contains(letter)) return false;
+
+        state = *transitionsAtState[letter].begin();
     }
 
-    return this->finalStateIndices.contains(currentStateIndex);
+    return this->acceptingStates.contains(state);
 };
 
-FiniteAutomata FiniteAutomata::nfa2dfa()
-{
-    // TODO
+struct TransitionClassHash {
+    size_t operator()(const std::unordered_map<Letter, int>& transitionClass) const
+    {
+        size_t hash = 0;
+
+        for (auto [letter, endState] : transitionClass) hash ^= letter.value_or(256) * (endState + 1);
+
+        return hash;
+    }
 };
 
-class EqClass
+std::unordered_map<std::string, int> FiniteAutomata::getMinDfaEquivalenceClassIndexes()
 {
-    public:
-        bool isFinal;
+    auto reachableStates = this->getStatesTransitivelyStartingAt(this->startState);
 
-        // letter -> eqClassIndex
-        std::unordered_map<char, int> transitions; // states in this class have a directed edge to eqClassIndex via letter
+    std::unordered_map<std::string, int> equivalenceClassIndexes;
 
-        EqClass(bool isFinal, std::unordered_map<char, int> transitions): isFinal(isFinal), transitions(transitions) {};
+    // initial partition
+    int numEquivalenceClasses = 2;
+    for (auto state : reachableStates) equivalenceClassIndexes[state] = this->acceptingStates.contains(state);
 
-        bool equals(const EqClass& other)
-        {
-            if (this->isFinal != other.isFinal) return false;
-
-            if (this->transitions.size() != other.transitions.size()) return false;
-
-            for (auto [letter, eqClassIndex] : this->transitions) {
-                if (!other.transitions.contains(letter) || other.transitions.at(letter) != eqClassIndex) return false;
-            }
-
-            return true;
-        };
-
-        int indexIn(const std::vector<EqClass>& objs)
-        {
-            for (int i = 0;i<objs.size();i++) if (this->equals(objs[i])) return i;
-
-            return -1;
-        };
-};
-
-FiniteAutomata FiniteAutomata::minimizeDFA()
-{
-    if (!this->isValidDFA()) throw std::runtime_error("minimize should only be called on valid DFAs");
-
-    // TODO: bfs to get reachable states beforehand
-    
-    std::vector<int> stateToEqClassIndexMap;
-
-    // initial partition, non final state class index = 0, final state class index = 1
-    for (int i = 0;i<this->stateIndexToNameMap.size();i++) stateToEqClassIndexMap.push_back(this->finalStateIndices.contains(i));
-
-    int numEqClasses = 2;
-
-    // repartition until partitioning does not create new equivalence classes
     while (true) {
-        std::vector<EqClass> eqClasses;
-        std::vector<int> newStateToEqClassIndexMap;
+        std::unordered_map<std::unordered_map<Letter, int>, std::unordered_set<std::string>, TransitionClassHash> acceptingEquivalenceClasses;
+        std::unordered_map<std::unordered_map<Letter, int>, std::unordered_set<std::string>, TransitionClassHash> nonAcceptingEquivalenceClasses;
 
-        for (int i = 0;i<this->stateIndexToNameMap.size();i++) {
-            bool isFinal = this->finalStateIndices.contains(i);
+        for (auto state : reachableStates) {
+            std::unordered_map<Letter, int> transitionClass;
 
-            std::unordered_map<char, int> transitions;
+            for (auto [letter, endStates] : this->transitionTable[state]) transitionClass[letter] = equivalenceClassIndexes[*endStates.begin()];
 
-            // for every outgoing edge, add (letter of that edge -> equivalence class index of the outgoing state of that edge)
-            for (auto indexedEdge : this->edgeTable[i]) transitions[indexedEdge.transitionToken.getChar()] = stateToEqClassIndexMap[indexedEdge.endState];
+            auto& equivalenceClassesFamily = this->acceptingStates.contains(state) ? acceptingEquivalenceClasses : nonAcceptingEquivalenceClasses;
 
-            EqClass eqClass(isFinal, transitions);
-
-            // this could be done via table lookup, but the resulting multimaps are hard to follow
-            int indexOfEqClass = eqClass.indexIn(eqClasses);
-
-            if (indexOfEqClass == -1) {
-                newStateToEqClassIndexMap.push_back(eqClasses.size());
-                eqClasses.push_back(eqClass);
-            }
-            else newStateToEqClassIndexMap.push_back(indexOfEqClass);
+            equivalenceClassesFamily[transitionClass].insert(state);
         }
 
-        stateToEqClassIndexMap = newStateToEqClassIndexMap;
+        int newNumEquivalenceClasses = acceptingEquivalenceClasses.size() + nonAcceptingEquivalenceClasses.size();
 
-        // partitions changed, continue to next round
-        if (eqClasses.size() > numEqClasses) {
-            numEqClasses = eqClasses.size();
+        if (newNumEquivalenceClasses == numEquivalenceClasses) return equivalenceClassIndexes; // minimal partition found
 
-            continue;
+        numEquivalenceClasses = newNumEquivalenceClasses;
+
+        int equivalenceClassIndex = 0;
+
+        for (auto [_, equivalentStates] : acceptingEquivalenceClasses) {
+            for (auto state : equivalentStates) equivalenceClassIndexes[state] = equivalenceClassIndex;
+
+            equivalenceClassIndex++;
         }
         
-        std::unordered_set<std::string> minDfaStateNames;
-        std::unordered_set<std::string> minDfaFinalStateNames;
-        std::vector<NamedEdge> minDfaNamedEdges;
+        for (auto [_, equivalentStates] : nonAcceptingEquivalenceClasses) {
+            for (auto state : equivalentStates) equivalenceClassIndexes[state] = equivalenceClassIndex;
 
-        std::string minDfaStartStateName = "S_" + std::to_string(stateToEqClassIndexMap[this->startStateIndex]);
-
-        for (int i = 0;i<eqClasses.size();i++) {
-            std::string stateName = "S_" + std::to_string(i);
-
-            minDfaStateNames.insert(stateName);
-            
-            if (eqClasses[i].isFinal) minDfaFinalStateNames.insert(stateName);
-
-            for (auto [letter, eqClassIndex] : eqClasses[i].transitions) minDfaNamedEdges.push_back(NamedEdge(stateName, "S_" + std::to_string(eqClassIndex), TransitionToken::character(letter)));
+            equivalenceClassIndex++;
         }
-
-        return FiniteAutomata(this->alphabet, minDfaStateNames, minDfaStartStateName, minDfaFinalStateNames, minDfaNamedEdges);
     }
+};
+
+std::string concatStrSet(std::unordered_set<std::string> strSet)
+{
+    std::string concat;
+
+    for (auto str : strSet) concat += str + ",";
+    
+    if (!strSet.empty()) concat.pop_back();
+
+    return concat;
+};
+
+FiniteAutomata FiniteAutomata::dfa2minDfa()
+{
+    if (!this->isDeterministic()) throw std::runtime_error("FiniteAutomata dfa2minDfa: only callable for DFA");
+
+    auto minDfaEquivalenceClassIndexes = this->getMinDfaEquivalenceClassIndexes();
+    
+    std::unordered_map<int, std::unordered_set<std::string>> minDfaEquivalenceClasses;
+
+    for (auto [state, equivalenceClassIndex] : minDfaEquivalenceClassIndexes) minDfaEquivalenceClasses[equivalenceClassIndex].insert(state);
+
+    std::unordered_set<std::string> minDfaStates;
+    std::string minDfaStartState;
+    std::unordered_set<std::string> minDfaAcceptingStates;
+    std::vector<Edge> minDfaEdges;
+
+    // must be const& otherwise concat order gets messed up due to rehash on pass by value
+    for (const auto& [_, memberStates] : minDfaEquivalenceClasses) {
+        auto memberState = *memberStates.begin();
+
+        auto minDfaState = concatStrSet(memberStates);
+        
+        minDfaStates.insert(minDfaState);
+        if (memberStates.contains(this->startState)) minDfaStartState = minDfaState;
+        if (this->acceptingStates.contains(memberState)) minDfaAcceptingStates.insert(minDfaState);
+
+        for (auto [letter, endStates] : this->transitionTable[memberState]) {
+            auto endState = *endStates.begin();
+            
+            auto endStateEquivalenceClassIndex = minDfaEquivalenceClassIndexes[endState];
+
+            auto minDfaEndState = concatStrSet(minDfaEquivalenceClasses[endStateEquivalenceClassIndex]);
+
+            minDfaEdges.push_back(Edge(minDfaState, minDfaEndState, letter));
+        }
+    }
+
+    return FiniteAutomata(minDfaStates, minDfaStartState, minDfaAcceptingStates, minDfaEdges);
 };
 
 std::string FiniteAutomata::toString()
@@ -227,29 +302,108 @@ std::string FiniteAutomata::toString()
 
     output += "States: ";
 
-    for (auto stateName : this->stateIndexToNameMap) output += stateName + ", ";
+    for (auto state : this->states) output += "{ " + state + " }, ";
 
     output.pop_back();
     output.pop_back();
 
     output += "\n";
 
-    output += "Start State: " + this->startStateName + "\n";
-
-    output += "Final States: ";
-
-    for (auto stateName : this->finalStateNames) output += stateName + ", ";
-
-    output.pop_back();
-    output.pop_back();
+    output += "Start State: { " + this->startState + " }";
 
     output += "\n";
 
-    output += "Edges:\n";
+    output += "Accepting States: ";
 
-    for (auto namedEdge : this->namedEdges) output += "\tFrom " + namedEdge.startState + " to " + namedEdge.endState + " on " + (namedEdge.transitionToken.isLambda() ? "lambda" : std::string(1, namedEdge.transitionToken.getChar())) + "\n";
+    for (auto state : this->acceptingStates) output += "{ " + state + " }, ";
 
-    output.pop_back();
+    if (this->acceptingStates.empty()) output += "NONE";
+    else {
+        output.pop_back();
+        output.pop_back();
+    }
+
+    output += "\n";
+
+    output += "Edges: ";
+
+    for (auto edge : this->edges) output += "{ " + edge.start + ", " + (edge.letter.has_value() ? std::string(1, edge.letter.value()) : "λ") + ", " + edge.end + " }, ";
+
+    if (this->edges.empty()) output += "NONE";
+    else {
+        output.pop_back();
+        output.pop_back();
+    }
 
     return output;
 };
+
+// RegularExpression::RegularExpression(char letter)
+// {
+//     if (!isalnum(letter)) throw std::runtime_error("RegularExpression constructor: letter must be alphanumeric");
+
+//     this->operation = NONE;
+
+//     this->leftOperand = letter;
+//     this->rightOperand = {};
+// };
+
+// RegularExpression RegularExpression::concat(RegularExpression re1, RegularExpression re2)
+// {
+//     RegularExpression concatExpression;
+
+//     concatExpression.operation = CONCAT;
+
+//     concatExpression.leftOperand = std::make_unique<RegularExpression>(re1);
+//     concatExpression.rightOperand = std::make_unique<RegularExpression>(re2);
+
+//     return concatExpression;
+// };
+
+// RegularExpression RegularExpression::plus(RegularExpression re1, RegularExpression re2)
+// {
+//     RegularExpression concatExpression;
+
+//     concatExpression.operation = PLUS;
+
+//     concatExpression.leftOperand = std::make_unique<RegularExpression>(re1);
+//     concatExpression.rightOperand = std::make_unique<RegularExpression>(re2);
+
+//     return concatExpression;
+// };
+
+// RegularExpression RegularExpression::star(RegularExpression re)
+// {
+//     RegularExpression concatExpression;
+
+//     concatExpression.operation = STAR;
+
+//     concatExpression.leftOperand = std::make_unique<RegularExpression>(re);
+
+//     return concatExpression;
+// };
+
+// std::string RegularExpression::toString()
+// {
+//     switch (this->operation) {
+//         case NONE:
+//             return this->leftOperand.index() == 0 ? "λ" : std::string(1, std::get<char>(this->leftOperand));
+//         case CONCAT:
+//             return std::get<std::unique_ptr<RegularExpression>>(this->leftOperand)->toString() + std::get<std::unique_ptr<RegularExpression>>(this->rightOperand)->toString();
+//         case PLUS:
+//             return std::get<std::unique_ptr<RegularExpression>>(this->leftOperand)->toString() + " + " + std::get<std::unique_ptr<RegularExpression>>(this->rightOperand)->toString();
+//         case STAR:
+//             std::string operandString = std::get<std::unique_ptr<RegularExpression>>(this->leftOperand)->toString();
+
+//             if (operandString == "λ" || operandString == "∅") return "∅";
+
+//             else if (operandString.contains('+')) return "(" + operandString + ")*";
+
+//             else return operandString + "*";
+//     }
+// };
+
+// RegularExpression RegularExpression::fromString(std::string str)
+// {
+//     // TODO: simple paren depth parser and construct from tree
+// };

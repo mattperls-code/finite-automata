@@ -2,24 +2,23 @@
 
 #include "./finite_automata.hpp"
 
-void testStringMatching()
+void testFiniteAutomataMatch()
 {
     std::cout << "DFA to match binary strings which have remainder two mod three" << std::endl << std::endl;
 
-    FiniteAutomata dfa = FiniteAutomata(
-        { '0', '1' },
+    FiniteAutomata dfa = FiniteAutomata::create(
         { "A", "B", "C" },
         "A",
         { "C" },
         {
-            NamedEdge("A", "A", TransitionToken::character('0')),
-            NamedEdge("A", "B", TransitionToken::character('1')),
+            Edge("A", "A", '0'),
+            Edge("A", "B", '1'),
 
-            NamedEdge("B", "C", TransitionToken::character('0')),
-            NamedEdge("B", "A", TransitionToken::character('1')),
+            Edge("B", "C", '0'),
+            Edge("B", "A", '1'),
 
-            NamedEdge("C", "B", TransitionToken::character('0')),
-            NamedEdge("C", "C", TransitionToken::character('1')),
+            Edge("C", "B", '0'),
+            Edge("C", "C", '1'),
         }
     );
 
@@ -36,43 +35,78 @@ void testStringMatching()
     for (auto testStr : testStrs) std::cout << "String " << testStr << " in DFA: " << (dfa.matches(testStr) ? "true" : "false") << std::endl;
 };
 
-void testMinimizeDFA()
+void testFiniteAutomataDfa2MinDfa()
 {
-    FiniteAutomata dfa = FiniteAutomata(
-        { '0', '1' },
-        { "Q0", "Q1", "Q2", "Q3", "Q4", "Q5" },
+    FiniteAutomata dfa = FiniteAutomata::create(
+        { "Q0", "Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7" },
         "Q0",
         { "Q1", "Q2", "Q4" },
         {
-            NamedEdge("Q0", "Q3", TransitionToken::character('0')),
-            NamedEdge("Q0", "Q1", TransitionToken::character('1')),
+            Edge("Q0", "Q3", '0'),
+            Edge("Q0", "Q1", '1'),
 
-            NamedEdge("Q1", "Q2", TransitionToken::character('0')),
-            NamedEdge("Q1", "Q5", TransitionToken::character('1')),
+            Edge("Q1", "Q2", '0'),
+            Edge("Q1", "Q5", '1'),
 
-            NamedEdge("Q2", "Q2", TransitionToken::character('0')),
-            NamedEdge("Q2", "Q5", TransitionToken::character('1')),
+            Edge("Q2", "Q2", '0'),
+            Edge("Q2", "Q5", '1'),
 
-            NamedEdge("Q3", "Q0", TransitionToken::character('0')),
-            NamedEdge("Q3", "Q4", TransitionToken::character('1')),
+            Edge("Q3", "Q0", '0'),
+            Edge("Q3", "Q4", '1'),
 
-            NamedEdge("Q4", "Q2", TransitionToken::character('0')),
-            NamedEdge("Q4", "Q5", TransitionToken::character('1')),
+            Edge("Q4", "Q2", '0'),
+            Edge("Q4", "Q5", '1'),
 
-            NamedEdge("Q5", "Q5", TransitionToken::character('0')),
-            NamedEdge("Q5", "Q5", TransitionToken::character('1'))
+            Edge("Q5", "Q5", '0'),
+            Edge("Q5", "Q5", '1'),
+
+            Edge("Q6", "Q7", '0'),
+            Edge("Q6", "Q3", '1'),
+
+            Edge("Q7", "Q0", '0'),
+            Edge("Q7", "Q6", '1'),
         }
     );
 
-    FiniteAutomata minDFA = dfa.minimizeDFA();
+    // FiniteAutomata dfa = FiniteAutomata(
+    //     { "i", "p", "q", "r", "s", "t", "f", "rt", "psf", "0" },
+    //     "i",
+    //     { "i", "f" },
+    //     {
+    //         Edge("i", "q", 'a'),
+    //         Edge("i", "rt", 'b'),
+    //         Edge("p", "q", 'a'),
+    //         Edge("p", "r", 'b'),
+    //         Edge("q", "0", 'a'),
+    //         Edge("q", "psf", 'b'),
+    //         Edge("r", "psf", 'a'),
+    //         Edge("r", "0", 'b'),
+    //         Edge("s", "q", 'a'),
+    //         Edge("s", "r", 'b'),
+    //         Edge("t", "0", 'a'),
+    //         Edge("t", "f", 'b'),
+    //         Edge("f", "0", 'a'),
+    //         Edge("f", "0", 'b'),
+    //         Edge("rt", "psf", 'a'),
+    //         Edge("rt", "f", 'b'),
+    //         Edge("psf", "q", 'a'),
+    //         Edge("psf", "r", 'b')
+    //     }
+    // );
 
+    std::cout << "Initial DFA:" << std::endl;
+    std::cout << dfa.toString() << std::endl << std::endl;
+
+    FiniteAutomata minDFA = dfa.dfa2minDfa();
+
+    std::cout << "Minimized DFA:" << std::endl;
     std::cout << minDFA.toString();
 };
 
 int main()
 {
-    // testStringMatching();
-    testMinimizeDFA();
+    // testFiniteAutomataMatch();
+    testFiniteAutomataDfa2MinDfa();
     
     return 0;
 };
