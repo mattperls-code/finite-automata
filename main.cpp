@@ -100,13 +100,88 @@ void testFiniteAutomataDfa2MinDfa()
     FiniteAutomata minDFA = dfa.dfa2minDfa();
 
     std::cout << "Minimized DFA:" << std::endl;
-    std::cout << minDFA.toString();
+    std::cout << minDFA.toString() << std::endl;
+};
+
+void testFiniteAutomataNfa2Dfa()
+{
+    FiniteAutomata nfa = FiniteAutomata::create(
+        { "A", "B", "C", "D" },
+        "A",
+        { "A", "B" },
+        {
+            Edge("A", "A", '0'),
+            Edge("A", "B", '0'),
+            Edge("A", "C", '1'),
+
+            Edge("B", "A", '1'),
+            Edge("B", "B", '1'),
+            Edge("B", "D", '0'),
+
+            Edge("C", "B", '0'),
+            Edge("C", "C", '1'),
+            Edge("C", "D", '1'),
+
+            Edge("D", "B", '0'),
+            Edge("D", "B", '1'),
+            Edge("D", "C", '1'),
+        }
+    );
+
+    std::cout << "Initial NFA:" << std::endl;
+    std::cout << nfa.toString() << std::endl << std::endl;
+
+    FiniteAutomata dfa = nfa.nfa2dfa();
+
+    std::cout << "DFA:" << std::endl;
+    std::cout << dfa.toString() << std::endl;
+};
+
+void testFiniteAutomataKleeneCycle()
+{
+    FiniteAutomata nfa = FiniteAutomata::create(
+        { "A", "B", "C", "D" },
+        "A",
+        { "A", "B" },
+        {
+            Edge("A", "A", '0'),
+            Edge("A", "B", '0'),
+            Edge("A", "C", '1'),
+
+            Edge("B", "A", '1'),
+            Edge("B", "B", '1'),
+            Edge("B", "D", '0'),
+
+            Edge("C", "B", '0'),
+            Edge("C", "C", '1'),
+            Edge("C", "D", '1'),
+
+            Edge("D", "B", '0'),
+            Edge("D", "B", '1'),
+            Edge("D", "C", '1'),
+        }
+    );
+
+    std::cout << "Initial NFA:" << std::endl;
+    std::cout << nfa.toString() << std::endl << std::endl;
+
+    FiniteAutomata dfa = nfa.nfa2dfa();
+
+    std::cout << "DFA:" << std::endl;
+    std::cout << dfa.toString() << std::endl << std::endl;
+
+    FiniteAutomata minDfa = dfa.dfa2minDfa();
+
+    std::cout << "Min DFA:" << std::endl;
+    std::cout << minDfa.toString() << std::endl;
 };
 
 int main()
 {
     // testFiniteAutomataMatch();
-    testFiniteAutomataDfa2MinDfa();
+    // testFiniteAutomataDfa2MinDfa();
+    // testFiniteAutomataNfa2Dfa();
+    testFiniteAutomataKleeneCycle();
     
     return 0;
 };

@@ -60,6 +60,7 @@ class FiniteAutomata
     public:
         static FiniteAutomata create(std::unordered_set<std::string> states, std::string startState, std::unordered_set<std::string> acceptingStates, std::vector<Edge> edges);
 
+        bool hasLambdaMoves();
         bool isDeterministic();
 
         bool matches(std::string str);
