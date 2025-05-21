@@ -1,10 +1,47 @@
 #include <stdexcept>
+#include <vector>
 #include <queue>
 #include <algorithm>
 
 #include "finite_automata.hpp"
 
-FiniteAutomata::FiniteAutomata(std::unordered_set<std::string> states, std::string startState, std::unordered_set<std::string> acceptingStates, std::vector<Edge> edges)
+std::string concatStrSet(std::unordered_set<std::string> strSet, std::string delimiter)
+{
+    std::string concat;
+
+    std::vector<std::string> strVec(strSet.begin(), strSet.end());
+    std::sort(strVec.begin(), strVec.end());
+
+    for (auto str : strVec) concat += str + delimiter;
+    
+    if (!strVec.empty()) concat = concat.substr(0, concat.size() - delimiter.size());
+
+    return concat;
+};
+
+size_t std::hash<std::unordered_map<Letter, int>>::operator()(const std::unordered_map<Letter, int>& transitionClass) const
+{
+    size_t hash = 0;
+
+    for (auto [letter, endState] : transitionClass) hash ^= letter.value_or(256) * (endState + 1);
+
+    return hash;
+};
+
+std::string Edge::toString()
+{
+    return "From " + this->start + " via " + (this->letter.has_value() ? std::string(1, this->letter.value()) : "λ") + " to " + this->end;
+};
+
+size_t std::hash<Edge>::operator()(const Edge& edge) const
+{
+    size_t startHash = std::hash<std::string>()(edge.start);
+    size_t endHash = std::hash<std::string>()(edge.end);
+
+    return startHash ^ endHash ^ edge.letter.value_or(256);
+};
+
+FiniteAutomata::FiniteAutomata(std::unordered_set<std::string> states, std::string startState, std::unordered_set<std::string> acceptingStates, std::unordered_set<Edge> edges)
 {
     this->states = states;
 
@@ -26,7 +63,7 @@ FiniteAutomata::FiniteAutomata(std::unordered_set<std::string> states, std::stri
     }
 };
 
-FiniteAutomata FiniteAutomata::create(std::unordered_set<std::string> states, std::string startState, std::unordered_set<std::string> acceptingStates, std::vector<Edge> edges)
+FiniteAutomata FiniteAutomata::create(std::unordered_set<std::string> states, std::string startState, std::unordered_set<std::string> acceptingStates, std::unordered_set<Edge> edges)
 {
     for (auto state : states) {
         for (auto c : state) if (!isalnum(c) && c != '_') throw std::runtime_error("FiniteAutomata create: state names must be alphanumeric or underscored");
@@ -196,15 +233,69 @@ bool FiniteAutomata::matches(std::string str)
     return this->acceptingStates.contains(state);
 };
 
-struct TransitionClassHash {
-    size_t operator()(const std::unordered_map<Letter, int>& transitionClass) const
-    {
-        size_t hash = 0;
+FiniteAutomata FiniteAutomata::lnfa2nfa()
+{
+    if (!this->hasLambdaMoves()) return *this;
 
-        for (auto [letter, endState] : transitionClass) hash ^= letter.value_or(256) * (endState + 1);
+    std::unordered_set<Edge> nfaEdges;
+    
+    // some caching for transitive closure can be done here
 
-        return hash;
+    for (auto edge : this->edges) {
+        if (!edge.letter.has_value()) continue; // only construct non lambda edges
+        
+        for (auto startState : this->getStatesTransitivelyEndingAt(edge.start, {})) {
+            for (auto endState : this->getStatesTransitivelyStartingAt(edge.end, {})) {
+                nfaEdges.insert(Edge(startState, endState, edge.letter));
+            }
+        }
     }
+
+    return FiniteAutomata(this->states, this->startState, this->acceptingStates, nfaEdges);
+};
+
+FiniteAutomata FiniteAutomata::nfa2dfa()
+{
+    if (this->hasLambdaMoves()) throw std::runtime_error("FiniteAutomata nfa2dfa: only callable for ordinary NFA");
+
+    if (this->isDeterministic()) return *this;
+
+    std::unordered_set<std::string> dfaStates;
+    std::string dfaStartState = "{" + this->startState + "}";
+    std::unordered_set<std::string> dfaAcceptingStates;
+    std::unordered_set<Edge> dfaEdges;
+
+    std::queue<std::unordered_set<std::string>> queue;
+    queue.push({ this->startState });
+
+    while (!queue.empty()) {
+        auto currentStates = queue.front();
+
+        auto dfaState = "{" + concatStrSet(currentStates, ",") + "}";
+
+        queue.pop();
+
+        if (dfaStates.contains(dfaState)) continue;
+
+        dfaStates.insert(dfaState);
+        for (auto state : currentStates) if (this->acceptingStates.contains(state)) dfaAcceptingStates.insert(dfaState);
+
+        std::unordered_map<Letter, std::unordered_set<std::string>> currentStatesTransitions;
+
+        for (auto state : currentStates) {
+            for (auto [letter, endStates] : this->transitionTable[state]) currentStatesTransitions[letter].merge(endStates);
+        }
+
+        for (auto [letter, endStates] : currentStatesTransitions) {
+            std::string dfaEndState = "{" + concatStrSet(endStates, ",") + "}";
+
+            dfaEdges.insert(Edge(dfaState, dfaEndState, letter));
+
+            queue.push(endStates);
+        }
+    }
+
+    return FiniteAutomata(dfaStates, dfaStartState, dfaAcceptingStates, dfaEdges);
 };
 
 std::unordered_map<std::string, int> FiniteAutomata::getMinDfaEquivalenceClassIndexes()
@@ -218,8 +309,8 @@ std::unordered_map<std::string, int> FiniteAutomata::getMinDfaEquivalenceClassIn
     for (auto state : reachableStates) equivalenceClassIndexes[state] = this->acceptingStates.contains(state);
 
     while (true) {
-        std::unordered_map<std::unordered_map<Letter, int>, std::unordered_set<std::string>, TransitionClassHash> acceptingEquivalenceClasses;
-        std::unordered_map<std::unordered_map<Letter, int>, std::unordered_set<std::string>, TransitionClassHash> nonAcceptingEquivalenceClasses;
+        std::unordered_map<std::unordered_map<Letter, int>, std::unordered_set<std::string>> acceptingEquivalenceClasses;
+        std::unordered_map<std::unordered_map<Letter, int>, std::unordered_set<std::string>> nonAcceptingEquivalenceClasses;
 
         for (auto state : reachableStates) {
             std::unordered_map<Letter, int> transitionClass;
@@ -253,62 +344,6 @@ std::unordered_map<std::string, int> FiniteAutomata::getMinDfaEquivalenceClassIn
     }
 };
 
-std::string concatStrSet(std::unordered_set<std::string> strSet, std::string delimiter)
-{
-    std::string concat;
-
-    std::vector<std::string> strVec(strSet.begin(), strSet.end());
-    std::sort(strVec.begin(), strVec.end());
-
-    for (auto str : strVec) concat += str + delimiter;
-    
-    if (!strVec.empty()) concat = concat.substr(0, concat.size() - delimiter.size());
-
-    return concat;
-};
-
-FiniteAutomata FiniteAutomata::nfa2dfa()
-{
-    if (this->hasLambdaMoves()) throw std::runtime_error("FiniteAutomata nfa2dfa: only callable for ordinary NFA");
-
-    std::unordered_set<std::string> dfaStates;
-    std::string dfaStartState = "{" + this->startState + "}";
-    std::unordered_set<std::string> dfaAcceptingStates;
-    std::vector<Edge> dfaEdges;
-
-    std::queue<std::unordered_set<std::string>> queue;
-    queue.push({ this->startState });
-
-    while (!queue.empty()) {
-        auto currentStates = queue.front();
-
-        auto dfaState = "{" + concatStrSet(currentStates, ",") + "}";
-
-        queue.pop();
-
-        if (dfaStates.contains(dfaState)) continue;
-
-        dfaStates.insert(dfaState);
-        for (auto state : currentStates) if (this->acceptingStates.contains(state)) dfaAcceptingStates.insert(dfaState);
-
-        std::unordered_map<Letter, std::unordered_set<std::string>> currentStatesTransitions;
-
-        for (auto state : currentStates) {
-            for (auto [letter, endStates] : this->transitionTable[state]) currentStatesTransitions[letter].merge(endStates);
-        }
-
-        for (auto [letter, endStates] : currentStatesTransitions) {
-            std::string dfaEndState = "{" + concatStrSet(endStates, ",") + "}";
-
-            dfaEdges.push_back(Edge(dfaState, dfaEndState, letter));
-
-            queue.push(endStates);
-        }
-    }
-
-    return FiniteAutomata(dfaStates, dfaStartState, dfaAcceptingStates, dfaEdges);
-};
-
 FiniteAutomata FiniteAutomata::dfa2minDfa()
 {
     if (!this->isDeterministic()) throw std::runtime_error("FiniteAutomata dfa2minDfa: only callable for DFA");
@@ -322,7 +357,7 @@ FiniteAutomata FiniteAutomata::dfa2minDfa()
     std::unordered_set<std::string> minDfaStates;
     std::string minDfaStartState;
     std::unordered_set<std::string> minDfaAcceptingStates;
-    std::vector<Edge> minDfaEdges;
+    std::unordered_set<Edge> minDfaEdges;
 
     for (auto [_, memberStates] : minDfaEquivalenceClasses) {
         auto memberState = *memberStates.begin();
@@ -340,7 +375,7 @@ FiniteAutomata FiniteAutomata::dfa2minDfa()
 
             auto minDfaEndState = "{" + concatStrSet(minDfaEquivalenceClasses[endStateEquivalenceClassIndex], ",") + "}";
 
-            minDfaEdges.push_back(Edge(minDfaState, minDfaEndState, letter));
+            minDfaEdges.insert(Edge(minDfaState, minDfaEndState, letter));
         }
     }
 
@@ -351,12 +386,7 @@ std::string FiniteAutomata::toString()
 {
     std::string output;
 
-    output += "States: ";
-
-    for (auto state : this->states) output += state + ", ";
-
-    output.pop_back();
-    output.pop_back();
+    output += "States: " + concatStrSet(this->states, ", ");
 
     output += "\n";
 
@@ -364,21 +394,14 @@ std::string FiniteAutomata::toString()
 
     output += "\n";
 
-    output += "Accepting States: ";
-
-    for (auto state : this->acceptingStates) output += state + ", ";
-
-    if (this->acceptingStates.empty()) output += "NONE";
-    else {
-        output.pop_back();
-        output.pop_back();
-    }
+    output += "Accepting States: " + concatStrSet(this->acceptingStates, ", ");
 
     output += "\n";
 
-    output += "Edges: ";
+    std::unordered_set<std::string> edgeStrSet;
+    for (auto edge : this->edges) edgeStrSet.insert(edge.toString());
 
-    for (auto edge : this->edges) output += "\n\tFrom " + edge.start + " to " + edge.end + " via " + (edge.letter.has_value() ? std::string(1, edge.letter.value()) : "λ");
+    output += "Edges: \n\t" + concatStrSet(edgeStrSet, "\n\t");
 
     if (this->edges.empty()) output += "NONE";
 

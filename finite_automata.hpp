@@ -2,7 +2,6 @@
 #define FINITE_AUTOMATA_HPP
 
 #include <string>
-#include <vector>
 #include <unordered_map>
 #include <unordered_set>
 #include <optional>
@@ -11,14 +10,28 @@
 
 typedef std::optional<char> Letter; // nullopt for lambda
 
+template <>
+struct std::hash<std::unordered_map<Letter, int>> {
+    size_t operator()(const std::unordered_map<Letter, int>& transitionClass) const;
+};
+
 class Edge
 {
-    public:
+    public: 
         std::string start;
         std::string end;
         Letter letter;
 
         Edge(std::string start, std::string end, Letter letter): start(start), end(end), letter(letter) {};
+
+        std::string toString();
+
+        bool operator==(const Edge&) const = default;
+};
+
+template <>
+struct std::hash<Edge> {
+    size_t operator()(const Edge& edge) const;
 };
 
 class RegularExpression;
@@ -29,9 +42,9 @@ class FiniteAutomata
         std::unordered_set<std::string> states;
         std::string startState;
         std::unordered_set<std::string> acceptingStates;
-        std::vector<Edge> edges;
+        std::unordered_set<Edge> edges;
 
-        FiniteAutomata(std::unordered_set<std::string> states, std::string startState, std::unordered_set<std::string> acceptingStates, std::vector<Edge> edges);
+        FiniteAutomata(std::unordered_set<std::string> states, std::string startState, std::unordered_set<std::string> acceptingStates, std::unordered_set<Edge> edges);
 
         // [startState][letter] = set<endState>
         std::unordered_map<std::string, std::unordered_map<Letter, std::unordered_set<std::string>>> transitionTable;
@@ -58,7 +71,7 @@ class FiniteAutomata
         std::unordered_map<std::string, int> getMinDfaEquivalenceClassIndexes();
 
     public:
-        static FiniteAutomata create(std::unordered_set<std::string> states, std::string startState, std::unordered_set<std::string> acceptingStates, std::vector<Edge> edges);
+        static FiniteAutomata create(std::unordered_set<std::string> states, std::string startState, std::unordered_set<std::string> acceptingStates, std::unordered_set<Edge> edges);
 
         bool hasLambdaMoves();
         bool isDeterministic();
