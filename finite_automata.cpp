@@ -5,6 +5,8 @@
 
 #include "finite_automata.hpp"
 
+// utils
+
 std::string concatStrSet(std::unordered_set<std::string> strSet, std::string delimiter)
 {
     std::string concat;
@@ -19,6 +21,8 @@ std::string concatStrSet(std::unordered_set<std::string> strSet, std::string del
     return concat;
 };
 
+// transitionClass hash
+
 size_t std::hash<std::unordered_map<Letter, int>>::operator()(const std::unordered_map<Letter, int>& transitionClass) const
 {
     size_t hash = 0;
@@ -27,6 +31,8 @@ size_t std::hash<std::unordered_map<Letter, int>>::operator()(const std::unorder
 
     return hash;
 };
+
+// edge
 
 std::string Edge::toString()
 {
@@ -40,6 +46,153 @@ size_t std::hash<Edge>::operator()(const Edge& edge) const
 
     return startHash ^ endHash ^ edge.letter.value_or(256);
 };
+
+// regexp
+
+RegularExpression RegularExpression::empty()
+{
+    return RegularExpression(Type::EMPTY, {});
+};
+
+RegularExpression RegularExpression::character(char c)
+{
+    return RegularExpression(Type::CHARACTER, c);
+};
+
+RegularExpression RegularExpression::concat(RegularExpression re1, RegularExpression re2)
+{
+    if (re1.type == EMPTY) return re2;
+    if (re2.type == EMPTY) return re1;
+
+    return RegularExpression(Type::CONCAT, std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>> {
+        std::make_shared<RegularExpression>(re1),
+        std::make_shared<RegularExpression>(re2)
+    });
+};
+
+RegularExpression RegularExpression::plus(RegularExpression re1, RegularExpression re2)
+{
+    return RegularExpression(Type::PLUS, std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>> {
+        std::make_shared<RegularExpression>(re1),
+        std::make_shared<RegularExpression>(re2)
+    });
+};
+
+RegularExpression RegularExpression::star(RegularExpression re)
+{
+    // TODO: handle lambda star
+
+    return RegularExpression(Type::STAR, std::make_shared<RegularExpression>(re));
+};
+
+RegularExpression RegularExpression::fromToken(Token token)
+{
+    if (token.id == "CHAR") return RegularExpression::character(token.getStringLiteralContent()[0]);
+
+    std::vector<RegularExpression> nestedExpressions;
+    for (auto nestedToken : token.getNestingContent()) nestedExpressions.push_back(RegularExpression::fromToken(nestedToken));
+
+    if (token.id == "CONCAT") return RegularExpression::concat(nestedExpressions[0], nestedExpressions[1]);
+
+    if (token.id == "PLUS") return RegularExpression::plus(nestedExpressions[0], nestedExpressions[1]);
+    
+    if (token.id == "STAR") return RegularExpression::star(nestedExpressions[0]);
+
+    return RegularExpression::empty();
+};
+
+RegularExpression RegularExpression::fromExpressionString(std::string expressionStr)
+{
+    ParserCombinator expression;
+    
+    auto whitespace = repetition(satisfy(is(' ')));
+
+    auto characterExpression = satisfy("CHAR", isalnum);
+
+    auto groupExpression = sequence({
+        satisfy(is('(')),
+        proxyParserCombinator(&expression),
+        satisfy(is(')'))
+    });
+
+    auto atom = choice({
+        characterExpression,
+        groupExpression
+    });
+
+    auto starExpression = atom.followedBy("STAR", satisfy(is('*')));
+
+    auto atomOrStarExpression = choice({
+        starExpression,
+        atom
+    });
+
+    ParserCombinator concatExpression = sequence("CONCAT", {
+        atomOrStarExpression,
+        whitespace,
+        choice({
+            proxyParserCombinator(&concatExpression),
+            atomOrStarExpression
+        })
+    });
+
+    ParserCombinator plusExpression = sequence("PLUS", {
+        choice({
+            concatExpression,
+            atomOrStarExpression
+        }),
+        satisfy(is('+')).surroundedBy(whitespace),
+        choice({
+            proxyParserCombinator(&plusExpression),
+            concatExpression,
+            atomOrStarExpression
+        })
+    });
+
+    expression = choice({
+        plusExpression,
+        concatExpression,
+        starExpression,
+        atom
+    }).surroundedBy(whitespace);
+
+    auto grammar = strictlySequence({
+        expression,
+        satisfy(is('\0'))
+    });
+    
+    auto parseResult = parse(expressionStr + '\0', grammar);
+
+    if (getResultType(parseResult) == PARSER_FAILURE) throw std::runtime_error("RegularExpression fromExpressionString: " + getParserFailureFromResult(parseResult).toString());
+
+    return RegularExpression::fromToken(getTokenFromResult(parseResult).getNestingContent()[0]);
+};
+
+std::string RegularExpression::toString()
+{
+    if (this->type == EMPTY) return "";
+
+    if (this->type == CHARACTER) return std::string(1, std::get<char>(this->value));
+
+    if (this->type == STAR) {
+        auto operandString = std::get<std::shared_ptr<RegularExpression>>(this->value)->toString();
+
+        if (operandString.size() == 1 || (!operandString.empty() && operandString[0] == '(')) return operandString + "*";
+
+        return "(" + operandString + ")*";
+    }
+
+    auto operands = std::get<std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>>>(this->value);
+
+    auto leftOperandString = operands.first->toString();
+    auto rightOperandString = operands.second->toString();
+
+    if (this->type == CONCAT) return leftOperandString + rightOperandString;
+
+    return "(" + leftOperandString + "+" + rightOperandString + ")";
+};
+
+// finite automata
 
 FiniteAutomata::FiniteAutomata(std::unordered_set<std::string> states, std::string startState, std::unordered_set<std::string> acceptingStates, std::unordered_set<Edge> edges)
 {
@@ -407,73 +560,3 @@ std::string FiniteAutomata::toString()
 
     return output;
 };
-
-// RegularExpression::RegularExpression(char letter)
-// {
-//     if (!isalnum(letter)) throw std::runtime_error("RegularExpression constructor: letter must be alphanumeric");
-
-//     this->operation = NONE;
-
-//     this->leftOperand = letter;
-//     this->rightOperand = {};
-// };
-
-// RegularExpression RegularExpression::concat(RegularExpression re1, RegularExpression re2)
-// {
-//     RegularExpression concatExpression;
-
-//     concatExpression.operation = CONCAT;
-
-//     concatExpression.leftOperand = std::make_unique<RegularExpression>(re1);
-//     concatExpression.rightOperand = std::make_unique<RegularExpression>(re2);
-
-//     return concatExpression;
-// };
-
-// RegularExpression RegularExpression::plus(RegularExpression re1, RegularExpression re2)
-// {
-//     RegularExpression concatExpression;
-
-//     concatExpression.operation = PLUS;
-
-//     concatExpression.leftOperand = std::make_unique<RegularExpression>(re1);
-//     concatExpression.rightOperand = std::make_unique<RegularExpression>(re2);
-
-//     return concatExpression;
-// };
-
-// RegularExpression RegularExpression::star(RegularExpression re)
-// {
-//     RegularExpression concatExpression;
-
-//     concatExpression.operation = STAR;
-
-//     concatExpression.leftOperand = std::make_unique<RegularExpression>(re);
-
-//     return concatExpression;
-// };
-
-// std::string RegularExpression::toString()
-// {
-//     switch (this->operation) {
-//         case NONE:
-//             return this->leftOperand.index() == 0 ? "λ" : std::string(1, std::get<char>(this->leftOperand));
-//         case CONCAT:
-//             return std::get<std::unique_ptr<RegularExpression>>(this->leftOperand)->toString() + std::get<std::unique_ptr<RegularExpression>>(this->rightOperand)->toString();
-//         case PLUS:
-//             return std::get<std::unique_ptr<RegularExpression>>(this->leftOperand)->toString() + " + " + std::get<std::unique_ptr<RegularExpression>>(this->rightOperand)->toString();
-//         case STAR:
-//             std::string operandString = std::get<std::unique_ptr<RegularExpression>>(this->leftOperand)->toString();
-
-//             if (operandString == "λ" || operandString == "∅") return "∅";
-
-//             else if (operandString.contains('+')) return "(" + operandString + ")*";
-
-//             else return operandString + "*";
-//     }
-// };
-
-// RegularExpression RegularExpression::fromString(std::string str)
-// {
-//     // TODO: simple paren depth parser and construct from tree
-// };

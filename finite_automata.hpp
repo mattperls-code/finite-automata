@@ -8,6 +8,8 @@
 #include <variant>
 #include <memory>
 
+#include "lib/parser.hpp"
+
 typedef std::optional<char> Letter; // nullopt for lambda
 
 template <>
@@ -34,7 +36,39 @@ struct std::hash<Edge> {
     size_t operator()(const Edge& edge) const;
 };
 
-class RegularExpression;
+class FiniteAutomata;
+
+class RegularExpression
+{
+    private:
+        enum Type { EMPTY, CHARACTER, CONCAT, PLUS, STAR };
+        Type type;
+
+        typedef std::variant<
+            std::monostate,
+            char,
+            std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>>,
+            std::shared_ptr<RegularExpression>
+        > Value;
+        Value value;
+
+        RegularExpression(Type type, Value value): type(type), value(value) {};
+
+        static RegularExpression empty();
+        static RegularExpression character(char c);
+        static RegularExpression concat(RegularExpression re1, RegularExpression re2);
+        static RegularExpression plus(RegularExpression re1, RegularExpression re2);
+        static RegularExpression star(RegularExpression re);
+
+        static RegularExpression fromToken(Token token);
+
+    public:
+        static RegularExpression fromExpressionString(std::string expressionStr);
+
+        FiniteAutomata re2lnfa();
+
+        std::string toString();
+};
 
 class FiniteAutomata
 {
@@ -87,29 +121,6 @@ class FiniteAutomata
         RegularExpression dfa2re();
 
         std::string toString();
-};
-
-class RegularExpression
-{
-    private:
-        enum Operation { NONE, CONCAT, PLUS, STAR };
-
-        Operation operation;
-
-        std::variant<std::monostate, char, std::unique_ptr<RegularExpression>> leftOperand;
-        std::variant<std::monostate, char, std::unique_ptr<RegularExpression>> rightOperand;
-
-    public:
-        RegularExpression(): operation(NONE), leftOperand(), rightOperand() {};
-        RegularExpression(char letter);
-        
-        static RegularExpression concat(RegularExpression re1, RegularExpression re2);
-        static RegularExpression plus(RegularExpression re1, RegularExpression re2);
-        static RegularExpression star(RegularExpression re);
-
-        std::string toString();
-
-        static RegularExpression fromString(std::string str);
 };
 
 #endif

@@ -2,6 +2,14 @@
 
 #include "./finite_automata.hpp"
 
+void testRegularExpressions()
+{
+    RegularExpression re = RegularExpression::fromExpressionString("(cbd (ab + b*(ca)))*abc + ab(c  + d*)*");
+
+    std::cout << "regular expression" << std::endl;
+    std::cout << re.toString() << std::endl << std::endl;
+};
+
 void testFiniteAutomataKleeneCycle()
 {
     FiniteAutomata lnfa = FiniteAutomata::create(
@@ -41,7 +49,8 @@ void testFiniteAutomataKleeneCycle()
 
 int main()
 {
-    testFiniteAutomataKleeneCycle();
+    testRegularExpressions();
+    // testFiniteAutomataKleeneCycle();
     
     return 0;
 };
