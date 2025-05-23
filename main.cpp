@@ -2,31 +2,14 @@
 
 #include "./finite_automata.hpp"
 
-void testRegularExpressions()
+void test(std::string testExpressionStr)
 {
-    RegularExpression re = RegularExpression::fromExpressionString("(cbd (ab + b*(ca)))*abc + ab(c  + d*)*");
+    RegularExpression re = RegularExpression::fromExpressionString(testExpressionStr);
 
-    std::cout << "regular expression" << std::endl;
+    std::cout << "re" << std::endl;
     std::cout << re.toString() << std::endl << std::endl;
-};
 
-void testFiniteAutomataKleeneCycle()
-{
-    FiniteAutomata lnfa = FiniteAutomata::create(
-        { "1", "2", "3", "4", "5" },
-        "1",
-        { "5" },
-        {
-            Edge("1", "2", {}),
-            Edge("1", "4", 'b'),
-            Edge("2", "1", 'a'),
-            Edge("2", "3", 'b'),
-            Edge("2", "5", {}),
-            Edge("3", "5", {}),
-            Edge("4", "2", 'a'),
-            Edge("5", "4", 'b'),
-        }
-    );
+    FiniteAutomata lnfa = FiniteAutomata::re2lnfa(re);
 
     std::cout << "lnfa" << std::endl;
     std::cout << lnfa.toString() << std::endl << std::endl;
@@ -45,12 +28,16 @@ void testFiniteAutomataKleeneCycle()
 
     std::cout << "minDfa" << std::endl;
     std::cout << minDfa.toString() << std::endl << std::endl;
+
+    FiniteAutomata compressedMinDfa = minDfa.compressNames();
+
+    std::cout << "compressed minDfa" << std::endl;
+    std::cout << compressedMinDfa.toString() << std::endl << std::endl;
 };
 
 int main()
 {
-    testRegularExpressions();
-    // testFiniteAutomataKleeneCycle();
+    test("λ + a(a + b)*b");
     
     return 0;
 };

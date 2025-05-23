@@ -51,12 +51,12 @@ size_t std::hash<Edge>::operator()(const Edge& edge) const
 
 RegularExpression RegularExpression::empty()
 {
-    return RegularExpression(Type::EMPTY, {});
+    return RegularExpression(RegularExpressionType::EMPTY, {});
 };
 
 RegularExpression RegularExpression::character(char c)
 {
-    return RegularExpression(Type::CHARACTER, c);
+    return RegularExpression(RegularExpressionType::CHARACTER, c);
 };
 
 RegularExpression RegularExpression::concat(RegularExpression re1, RegularExpression re2)
@@ -64,7 +64,7 @@ RegularExpression RegularExpression::concat(RegularExpression re1, RegularExpres
     if (re1.type == EMPTY) return re2;
     if (re2.type == EMPTY) return re1;
 
-    return RegularExpression(Type::CONCAT, std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>> {
+    return RegularExpression(RegularExpressionType::CONCAT, std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>> {
         std::make_shared<RegularExpression>(re1),
         std::make_shared<RegularExpression>(re2)
     });
@@ -72,7 +72,7 @@ RegularExpression RegularExpression::concat(RegularExpression re1, RegularExpres
 
 RegularExpression RegularExpression::plus(RegularExpression re1, RegularExpression re2)
 {
-    return RegularExpression(Type::PLUS, std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>> {
+    return RegularExpression(RegularExpressionType::PLUS, std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>> {
         std::make_shared<RegularExpression>(re1),
         std::make_shared<RegularExpression>(re2)
     });
@@ -82,7 +82,7 @@ RegularExpression RegularExpression::star(RegularExpression re)
 {
     // TODO: handle lambda star
 
-    return RegularExpression(Type::STAR, std::make_shared<RegularExpression>(re));
+    return RegularExpression(RegularExpressionType::STAR, std::make_shared<RegularExpression>(re));
 };
 
 RegularExpression RegularExpression::fromToken(Token token)
@@ -109,6 +109,12 @@ RegularExpression RegularExpression::fromExpressionString(std::string expression
 
     auto characterExpression = satisfy("CHAR", isalnum);
 
+    // λ
+    auto lambdaExpression = sequence("EMPTY", {
+        satisfy(is((char) 206)),
+        satisfy(is((char) 187))
+    });
+
     auto groupExpression = sequence({
         satisfy(is('(')),
         proxyParserCombinator(&expression),
@@ -117,6 +123,7 @@ RegularExpression RegularExpression::fromExpressionString(std::string expression
 
     auto atom = choice({
         characterExpression,
+        lambdaExpression,
         groupExpression
     });
 
@@ -168,9 +175,34 @@ RegularExpression RegularExpression::fromExpressionString(std::string expression
     return RegularExpression::fromToken(getTokenFromResult(parseResult).getNestingContent()[0]);
 };
 
+RegularExpressionType RegularExpression::getType()
+{
+    return this->type;
+};
+
+char RegularExpression::getCharacterExpression()
+{
+    return std::get<char>(this->value);
+};
+
+std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>> RegularExpression::getConcatExpression()
+{
+    return std::get<std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>>>(this->value);
+};
+
+std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>> RegularExpression::getPlusExpression()
+{
+    return std::get<std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>>>(this->value);
+};
+
+std::shared_ptr<RegularExpression> RegularExpression::getStarExpression()
+{
+    return std::get<std::shared_ptr<RegularExpression>>(this->value);
+};
+
 std::string RegularExpression::toString()
 {
-    if (this->type == EMPTY) return "";
+    if (this->type == EMPTY) return "λ";
 
     if (this->type == CHARACTER) return std::string(1, std::get<char>(this->value));
 
@@ -223,6 +255,146 @@ FiniteAutomata FiniteAutomata::create(std::unordered_set<std::string> states, st
     }
 
     return FiniteAutomata(states, startState, acceptingStates, edges);
+};
+
+FiniteAutomata FiniteAutomata::compressNames()
+{
+    std::vector<std::string> originalStates(this->states.begin(), this->states.end());
+    std::sort(originalStates.begin(), originalStates.end());
+
+    std::string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    std::unordered_map<std::string, std::string> compressionMap;
+    for (int i = 0;i<originalStates.size();i++) compressionMap[originalStates[i]] = originalStates.size() > alphabet.size() ? std::to_string(i) : std::string(1, alphabet[i]);
+
+    std::unordered_set<std::string> compressedStates;
+    for (auto originalState : this->states) compressedStates.insert(compressionMap[originalState]);
+
+    std::string compressedStartState = compressionMap[this->startState];
+
+    std::unordered_set<std::string> compressedAcceptingStates;
+    for (auto originalAcceptingState : this->acceptingStates) compressedAcceptingStates.insert(compressionMap[originalAcceptingState]);
+
+    std::unordered_set<Edge> compressedEdges;
+    for (auto edge : this->edges) compressedEdges.insert(Edge(compressionMap[edge.start], compressionMap[edge.end], edge.letter));
+
+    return FiniteAutomata(compressedStates, compressedStartState, compressedAcceptingStates, compressedEdges);
+};
+
+bool FiniteAutomata::hasLambdaMoves()
+{
+    for (auto edge : this->edges) if (!edge.letter.has_value()) return true;
+
+    return false;
+};
+
+bool FiniteAutomata::isDeterministic()
+{
+    for (auto [_, transitions] : this->transitionTable) {
+        if (transitions.contains({})) return false;
+        
+        for (auto [_, endStates] : transitions) if (endStates.size() > 1) return false;
+    }
+
+    return true;
+};
+
+std::string FiniteAutomata::addRe(std::string startState, RegularExpression re)
+{
+    auto type = re.getType();
+
+    if (type == EMPTY) return this->addEmptyRe(startState);
+    
+    else if (type == CHARACTER) return this->addCharacterRe(startState, re.getCharacterExpression());
+    
+    else if (type == CONCAT) {
+        auto [re1, re2] = re.getConcatExpression();
+
+        return this->addConcatRe(startState, *re1, *re2);
+    }
+
+    else if (type == PLUS) {
+        auto [re1, re2] = re.getPlusExpression();
+
+        return this->addPlusRe(startState, *re1, *re2);
+    }
+
+    else return this->addStarRe(startState, *re.getStarExpression());
+};
+
+std::string FiniteAutomata::addEmptyRe(std::string startState)
+{
+    std::string nextState = startState + "-c";
+
+    this->states.insert(nextState);
+    
+    this->edges.insert(Edge(startState, nextState, {}));
+
+    return nextState;
+};
+
+std::string FiniteAutomata::addCharacterRe(std::string startState, char characterExpression)
+{
+    std::string nextState = startState + "-c";
+
+    this->states.insert(nextState);
+    
+    this->edges.insert(Edge(startState, nextState, characterExpression));
+
+    return nextState;
+};
+
+std::string FiniteAutomata::addConcatRe(std::string startState, RegularExpression re1, RegularExpression re2)
+{
+    std::string nextState = this->addRe(startState, re1);
+    std::string nextNextState = this->addRe(nextState, re2);
+
+    return nextNextState;
+};
+
+std::string FiniteAutomata::addPlusRe(std::string startState, RegularExpression re1, RegularExpression re2)
+{
+    std::string branchStartState1 = startState + "-b0";
+    std::string branchStartState2 = startState + "-b1";
+    
+    this->states.insert(branchStartState1);
+    this->states.insert(branchStartState2);
+
+    this->edges.insert(Edge(startState, branchStartState1, {}));
+    this->edges.insert(Edge(startState, branchStartState2, {}));
+
+    std::string branchEndState1 = this->addRe(branchStartState1, re1);
+    std::string branchEndState2 = this->addRe(branchStartState2, re2);
+
+    std::string branchCombineState = startState + "-c";
+
+    this->states.insert(branchCombineState);
+
+    this->edges.insert(Edge(branchEndState1, branchCombineState, {}));
+    this->edges.insert(Edge(branchEndState2, branchCombineState, {}));
+
+    return branchCombineState;
+};
+
+std::string FiniteAutomata::addStarRe(std::string startState, RegularExpression re)
+{
+    std::string nextState = this->addRe(startState, re);
+
+    this->edges.insert(Edge(startState, nextState, {}));
+    this->edges.insert(Edge(nextState, startState, {}));
+
+    return nextState;
+};
+
+FiniteAutomata FiniteAutomata::re2lnfa(RegularExpression re)
+{
+    FiniteAutomata lnfa = FiniteAutomata({ "ROOT" }, "ROOT", {}, {});
+
+    std::string lnfaAcceptingState = lnfa.addRe("ROOT", re);
+    
+    lnfa.acceptingStates.insert(lnfaAcceptingState);
+
+    return lnfa.compressNames();
 };
 
 std::unordered_set<std::string> FiniteAutomata::getStatesDirectlyStartingAt(std::string state)
@@ -349,50 +521,17 @@ std::unordered_set<std::string> FiniteAutomata::getStatesTransitivelyEndingAt(st
     return allStartStates;
 };
 
-bool FiniteAutomata::hasLambdaMoves()
-{
-    for (auto edge : this->edges) if (!edge.letter.has_value()) return true;
-
-    return false;
-};
-
-bool FiniteAutomata::isDeterministic()
-{
-    for (auto [_, transitions] : this->transitionTable) {
-        if (transitions.contains({})) return false; // lambda edge
-        
-        for (auto [_, endStates] : transitions) {
-            if (endStates.size() > 1) return false; // multiple edges for same letter
-        }
-    }
-
-    return true;
-};
-
-bool FiniteAutomata::matches(std::string str)
-{
-    if (!this->isDeterministic()) throw std::runtime_error("FiniteAutomata matches: only callable for DFA");
-
-    std::string state = this->startState;
-
-    for (auto letter : str) {
-        auto transitionsAtState = this->transitionTable[state];
-
-        if (!transitionsAtState.contains(letter)) return false;
-
-        state = *transitionsAtState[letter].begin();
-    }
-
-    return this->acceptingStates.contains(state);
-};
-
 FiniteAutomata FiniteAutomata::lnfa2nfa()
 {
     if (!this->hasLambdaMoves()) return *this;
 
-    std::unordered_set<Edge> nfaEdges;
-    
     // some caching for transitive closure can be done here
+
+    std::unordered_set<std::string> nfaAcceptingStates;
+
+    for (auto acceptingState : this->acceptingStates) nfaAcceptingStates.merge(this->getStatesTransitivelyEndingAt(acceptingState, {}));
+
+    std::unordered_set<Edge> nfaEdges;
 
     for (auto edge : this->edges) {
         if (!edge.letter.has_value()) continue; // only construct non lambda edges
@@ -404,7 +543,7 @@ FiniteAutomata FiniteAutomata::lnfa2nfa()
         }
     }
 
-    return FiniteAutomata(this->states, this->startState, this->acceptingStates, nfaEdges);
+    return FiniteAutomata(this->states, this->startState, nfaAcceptingStates, nfaEdges);
 };
 
 FiniteAutomata FiniteAutomata::nfa2dfa()
@@ -533,6 +672,23 @@ FiniteAutomata FiniteAutomata::dfa2minDfa()
     }
 
     return FiniteAutomata(minDfaStates, minDfaStartState, minDfaAcceptingStates, minDfaEdges);
+};
+
+bool FiniteAutomata::matches(std::string str)
+{
+    if (!this->isDeterministic()) throw std::runtime_error("FiniteAutomata matches: only callable for DFA");
+
+    std::string state = this->startState;
+
+    for (auto letter : str) {
+        auto transitionsAtState = this->transitionTable[state];
+
+        if (!transitionsAtState.contains(letter)) return false;
+
+        state = *transitionsAtState[letter].begin();
+    }
+
+    return this->acceptingStates.contains(state);
 };
 
 std::string FiniteAutomata::toString()

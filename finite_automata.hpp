@@ -36,13 +36,19 @@ struct std::hash<Edge> {
     size_t operator()(const Edge& edge) const;
 };
 
-class FiniteAutomata;
+enum RegularExpressionType
+{
+    EMPTY,
+    CHARACTER,
+    CONCAT,
+    PLUS,
+    STAR
+};
 
 class RegularExpression
 {
     private:
-        enum Type { EMPTY, CHARACTER, CONCAT, PLUS, STAR };
-        Type type;
+        RegularExpressionType type;
 
         typedef std::variant<
             std::monostate,
@@ -52,7 +58,7 @@ class RegularExpression
         > Value;
         Value value;
 
-        RegularExpression(Type type, Value value): type(type), value(value) {};
+        RegularExpression(RegularExpressionType type, Value value): type(type), value(value) {};
 
         static RegularExpression empty();
         static RegularExpression character(char c);
@@ -65,7 +71,12 @@ class RegularExpression
     public:
         static RegularExpression fromExpressionString(std::string expressionStr);
 
-        FiniteAutomata re2lnfa();
+        RegularExpressionType getType();
+
+        char getCharacterExpression();
+        std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>> getConcatExpression();
+        std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>> getPlusExpression();
+        std::shared_ptr<RegularExpression> getStarExpression();
 
         std::string toString();
 };
@@ -86,19 +97,21 @@ class FiniteAutomata
         // [endState][letter] = set<startState>
         std::unordered_map<std::string, std::unordered_map<Letter, std::unordered_set<std::string>>> invertedTransitionTable;
 
-        // states with an edge starting from the given state
+        // these mutate the caller and return the end state for the branch added
+        std::string addRe(std::string rootState, RegularExpression re);
+        std::string addEmptyRe(std::string rootState);
+        std::string addCharacterRe(std::string rootState, char characterExpression);
+        std::string addConcatRe(std::string rootState, RegularExpression re1, RegularExpression re2);
+        std::string addPlusRe(std::string rootState, RegularExpression re1, RegularExpression re2);
+        std::string addStarRe(std::string rootState, RegularExpression re);
+
         std::unordered_set<std::string> getStatesDirectlyStartingAt(std::string state);
         std::unordered_set<std::string> getStatesDirectlyStartingAt(std::string state, Letter letter);
-
-        // states reachable starting from the given state
         std::unordered_set<std::string> getStatesTransitivelyStartingAt(std::string state);
         std::unordered_set<std::string> getStatesTransitivelyStartingAt(std::string state, Letter letter);
 
-        // states with an edge ending at the given state
         std::unordered_set<std::string> getStatesDirectlyEndingAt(std::string state);
         std::unordered_set<std::string> getStatesDirectlyEndingAt(std::string state, Letter letter);
-
-        // states reachable ending at the given state
         std::unordered_set<std::string> getStatesTransitivelyEndingAt(std::string state);
         std::unordered_set<std::string> getStatesTransitivelyEndingAt(std::string state, Letter letter);
 
@@ -107,10 +120,12 @@ class FiniteAutomata
     public:
         static FiniteAutomata create(std::unordered_set<std::string> states, std::string startState, std::unordered_set<std::string> acceptingStates, std::unordered_set<Edge> edges);
 
+        FiniteAutomata compressNames();
+
         bool hasLambdaMoves();
         bool isDeterministic();
 
-        bool matches(std::string str);
+        static FiniteAutomata re2lnfa(RegularExpression re);
 
         FiniteAutomata lnfa2nfa();
 
@@ -119,6 +134,8 @@ class FiniteAutomata
         FiniteAutomata dfa2minDfa();
 
         RegularExpression dfa2re();
+
+        bool matches(std::string str);
 
         std::string toString();
 };
