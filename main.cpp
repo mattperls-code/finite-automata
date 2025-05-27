@@ -43,6 +43,8 @@ void test(std::string testExpressionStr)
 
     std::cout << "recycled minDfa" << std::endl;
     std::cout << recycledMinDfa.toString() << std::endl << std::endl;
+
+    recycledMinDfa.exportGraph("./tests", "test1");
 };
 
 int main()

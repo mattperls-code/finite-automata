@@ -2,6 +2,9 @@
 #include <vector>
 #include <queue>
 #include <algorithm>
+#include <fstream>
+#include <cstdlib>
+#include <filesystem>
 
 #include "finite_automata.hpp"
 
@@ -826,4 +829,81 @@ std::string FiniteAutomata::toString()
     if (this->edges.empty()) output += "NONE";
 
     return output;
+};
+
+std::string FiniteAutomata::toDOT()
+{
+    std::string output;
+
+    output += "digraph FiniteAutomata {";
+
+    output += "\n";
+
+    output += "\trankdir=LR;";
+
+    output += "\n";
+
+    output += "\tnodesep=1.0;";
+
+    output += "\n";
+
+    output += "\tranksep=1.0;";
+
+    output += "\n";
+
+    output += "\t\"$\" [shape=point, style=invis, width=0];";
+
+    output += "\n";
+
+    output += "\t\"$\" -> \"" + this->startState + "\";";
+
+    output += "\n";
+
+    std::unordered_set<std::string> acceptingStateStrSet;
+    for (auto acceptingState : this->acceptingStates) acceptingStateStrSet.insert("\t\"" + acceptingState + "\" [penwidth=5];");
+
+    output += concatStrSet(acceptingStateStrSet, "\n");
+
+    output += "\n";
+
+    std::unordered_set<std::string> edgeDotSet;
+
+    // start -> transition class, letter end states
+
+    for (auto [startState, transitions] : this->transitionTable) {
+        std::unordered_map<std::string, std::unordered_set<Letter>> parallelEdges;
+
+        for (auto [letter, endStates] : transitions) for (auto endState : endStates) parallelEdges[endState].insert(letter);
+
+        for (auto [endState, letters] : parallelEdges) {
+            std::unordered_set<std::string> lettersStrSet;
+            for (auto letter : letters) lettersStrSet.insert(letter.has_value() ? std::string(1, letter.value()) : "λ");
+
+            edgeDotSet.insert("\t\"" + startState + "\" -> \"" + endState + "\" [label=\"" + concatStrSet(lettersStrSet, ",") + "\"];");
+        }
+    }
+
+    output += concatStrSet(edgeDotSet, "\n");
+
+    output += "\n";
+
+    output += "}";
+
+    return output;
+};
+
+void FiniteAutomata::exportGraph(std::string outputDirPath, std::string outputFileName) {
+    std::filesystem::create_directories(outputDirPath);
+
+    std::string dotOutputFilePath = outputDirPath + "/" + outputFileName + ".dot";
+
+    std::ofstream dotOutputFile(dotOutputFilePath);
+
+    dotOutputFile << this->toDOT();
+
+    dotOutputFile.close();
+
+    std::string renderDotFileCommand = "dot -Tpng " + dotOutputFilePath + " -o " + outputDirPath + "/" + outputFileName + ".png";
+
+    std::system(renderDotFileCommand.c_str());
 };

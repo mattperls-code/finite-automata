@@ -26,9 +26,9 @@ class Edge
 
         Edge(std::string start, std::string end, Letter letter): start(start), end(end), letter(letter) {};
 
-        std::string toString();
-
         bool operator==(const Edge&) const = default;
+
+        std::string toString();
 };
 
 template <>
@@ -142,6 +142,9 @@ class FiniteAutomata
         bool matches(std::string str);
 
         std::string toString();
+        std::string toDOT();
+
+        void exportGraph(std::string outputDirPath, std::string outputFileName);
 };
 
 #endif
