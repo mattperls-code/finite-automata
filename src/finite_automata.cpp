@@ -50,194 +50,6 @@ size_t std::hash<Edge>::operator()(const Edge& edge) const
     return startHash ^ endHash ^ edge.letter.value_or(256);
 };
 
-// regexp
-
-RegularExpression RegularExpression::empty()
-{
-    return RegularExpression(RegularExpressionType::EMPTY, {});
-};
-
-RegularExpression RegularExpression::character(char c)
-{
-    return RegularExpression(RegularExpressionType::CHARACTER, c);
-};
-
-RegularExpression RegularExpression::concat(RegularExpression re1, RegularExpression re2)
-{
-    if (re1.type == EMPTY) return re2;
-    if (re2.type == EMPTY) return re1;
-
-    return RegularExpression(RegularExpressionType::CONCAT, std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>> {
-        std::make_shared<RegularExpression>(re1),
-        std::make_shared<RegularExpression>(re2)
-    });
-};
-
-RegularExpression RegularExpression::plus(RegularExpression re1, RegularExpression re2)
-{
-    return RegularExpression(RegularExpressionType::PLUS, std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>> {
-        std::make_shared<RegularExpression>(re1),
-        std::make_shared<RegularExpression>(re2)
-    });
-};
-
-RegularExpression RegularExpression::star(RegularExpression re)
-{
-    return RegularExpression(RegularExpressionType::STAR, std::make_shared<RegularExpression>(re));
-};
-
-RegularExpression RegularExpression::fromToken(Token token)
-{
-    if (token.id == "CHAR") return RegularExpression::character(token.getStringLiteralContent()[0]);
-
-    std::vector<RegularExpression> nestedExpressions;
-    for (auto nestedToken : token.getNestingContent()) nestedExpressions.push_back(RegularExpression::fromToken(nestedToken));
-
-    if (token.id == "CONCAT") return RegularExpression::concat(nestedExpressions[0], nestedExpressions[1]);
-
-    if (token.id == "PLUS") return RegularExpression::plus(nestedExpressions[0], nestedExpressions[1]);
-    
-    if (token.id == "STAR") return RegularExpression::star(nestedExpressions[0]);
-
-    return RegularExpression::empty();
-};
-
-RegularExpression RegularExpression::fromExpressionString(std::string expressionStr)
-{
-    // uses parser lib to construct expression tree from a re string, then pass to fromToken to build actual re
-
-    // combinators are a bit tricky here since it has to avoid left recursion
-    // to do this we use atomic expressions which dont self recurse and then build recursive operational expressions layer by layer
-
-    ParserCombinator expression;
-    
-    auto whitespace = repetition(satisfy(is(' ')));
-
-    auto characterExpression = satisfy("CHAR", isalnum);
-
-    // λ
-    auto lambdaExpression = sequence("EMPTY", {
-        satisfy(is((char) 206)),
-        satisfy(is((char) 187))
-    });
-
-    auto groupExpression = sequence({
-        satisfy(is('(')),
-        proxyParserCombinator(&expression),
-        satisfy(is(')'))
-    });
-
-    auto atom = choice({
-        characterExpression,
-        lambdaExpression,
-        groupExpression
-    });
-
-    auto starExpression = atom.followedBy("STAR", satisfy(is('*')));
-
-    auto atomOrStarExpression = choice({
-        starExpression,
-        atom
-    });
-
-    ParserCombinator concatExpression = sequence("CONCAT", {
-        atomOrStarExpression,
-        whitespace,
-        choice({
-            proxyParserCombinator(&concatExpression),
-            atomOrStarExpression
-        })
-    });
-
-    ParserCombinator plusExpression = sequence("PLUS", {
-        choice({
-            concatExpression,
-            atomOrStarExpression
-        }),
-        satisfy(is('+')).surroundedBy(whitespace),
-        choice({
-            proxyParserCombinator(&plusExpression),
-            concatExpression,
-            atomOrStarExpression
-        })
-    });
-
-    expression = choice({
-        plusExpression,
-        concatExpression,
-        starExpression,
-        atom
-    }).surroundedBy(whitespace);
-
-    auto grammar = strictlySequence({
-        expression,
-        satisfy(is('\0'))
-    });
-    
-    auto parseResult = parse(expressionStr + '\0', grammar);
-
-    if (getResultType(parseResult) == PARSER_FAILURE) throw std::runtime_error("RegularExpression fromExpressionString: " + getParserFailureFromResult(parseResult).toString());
-
-    return RegularExpression::fromToken(getTokenFromResult(parseResult).getNestingContent()[0]);
-};
-
-RegularExpressionType RegularExpression::getType()
-{
-    return this->type;
-};
-
-char RegularExpression::getCharacterExpression()
-{
-    return std::get<char>(this->value);
-};
-
-std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>> RegularExpression::getConcatExpression()
-{
-    return std::get<std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>>>(this->value);
-};
-
-std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>> RegularExpression::getPlusExpression()
-{
-    return std::get<std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>>>(this->value);
-};
-
-std::shared_ptr<RegularExpression> RegularExpression::getStarExpression()
-{
-    return std::get<std::shared_ptr<RegularExpression>>(this->value);
-};
-
-std::string RegularExpression::toString()
-{
-    if (this->type == EMPTY) return "λ";
-
-    if (this->type == CHARACTER) return std::string(1, std::get<char>(this->value));
-
-    if (this->type == STAR) {
-        auto operand = std::get<std::shared_ptr<RegularExpression>>(this->value);
-
-        auto operandString = operand->toString();
-
-        if (operand->getType() == PLUS || operand->getType() == CONCAT) operandString = "(" + operandString + ")";
-
-        return operandString + "*";
-    }
-
-    auto operands = std::get<std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>>>(this->value);
-
-    auto leftOperandString = operands.first->toString();
-    auto rightOperandString = operands.second->toString();
-
-    if (this->type == PLUS) return leftOperandString + "+" + rightOperandString;
-    
-    // if either operand comes from a plus, it needs to be wrapped before concat to ensure correct distribution
-
-    if (operands.first->getType() == PLUS) leftOperandString = "(" + leftOperandString + ")";
-    if (operands.second->getType() == PLUS) rightOperandString = "(" + rightOperandString + ")";
-
-    return leftOperandString + rightOperandString;
-};
-
-
 // finite automata
 
 FiniteAutomata::FiniteAutomata(std::unordered_set<std::string> states, std::string startState, std::unordered_set<std::string> acceptingStates, std::unordered_set<Edge> edges)
@@ -788,6 +600,14 @@ FiniteAutomata FiniteAutomata::dfa2minDfa()
     return FiniteAutomata(minDfaStates, minDfaStartState, minDfaAcceptingStates, minDfaEdges);
 };
 
+FiniteAutomata FiniteAutomata::complement()
+{
+    std::unordered_set<std::string> complementAcceptingStates;
+    for (auto state : this->states) if (!this->acceptingStates.contains(state)) complementAcceptingStates.insert(state);
+
+    return FiniteAutomata(this->states, this->startState, complementAcceptingStates, this->edges);
+};
+
 bool FiniteAutomata::matches(std::string str)
 {
     if (!this->isDeterministic()) throw std::runtime_error("FiniteAutomata matches: only callable for DFA");
@@ -803,6 +623,71 @@ bool FiniteAutomata::matches(std::string str)
     }
 
     return this->acceptingStates.contains(state);
+};
+
+bool FiniteAutomata::isIsomorphism(FiniteAutomata dfa1, FiniteAutomata dfa2)
+{
+    if (!dfa1.isDeterministic() || !dfa2.isDeterministic()) throw std::runtime_error("FiniteAutomata isIsomorphism: only callable on DFAs");
+
+    // run bfs on both dfa graphs and look for structural differences
+
+    std::unordered_set<std::string> visited1;
+    std::unordered_set<std::string> visited2;
+
+    std::queue<std::string> queue1;
+    std::queue<std::string> queue2;
+
+    queue1.push(dfa1.startState);
+    queue2.push(dfa2.startState);
+
+    while (!queue1.empty()) {
+        auto currentState1 = queue1.front();
+        auto currentState2 = queue2.front();
+
+        queue1.pop();
+        queue2.pop();
+
+        if (dfa1.acceptingStates.contains(currentState1) != dfa2.acceptingStates.contains(currentState2)) return false;
+
+        bool isVisited1 = visited1.contains(currentState1);
+        bool isVisited2 = visited2.contains(currentState2);
+
+        if (isVisited1 != isVisited2) return false;
+
+        if (isVisited1) continue;
+
+        visited1.insert(currentState1);
+        visited2.insert(currentState2);
+
+        auto transitions1 = dfa1.transitionTable[currentState1];
+        auto transitions2 = dfa2.transitionTable[currentState2];
+
+        std::vector<Letter> letters1;
+        std::vector<Letter> letters2;
+
+        for (auto [letter1, _] : transitions1) letters1.push_back(letter1);
+        for (auto [letter2, _] : transitions2) letters2.push_back(letter2);
+
+        // insertion into the queue must be ordered the same, so we sort the edges first
+
+        std::sort(letters1.begin(), letters1.end());
+        std::sort(letters2.begin(), letters2.end());
+
+        if (letters1 != letters2) return false;
+
+        for (auto letter1 : letters1) queue1.push(*transitions1[letter1].begin());
+        for (auto letter2 : letters2) queue2.push(*transitions2[letter2].begin());
+    }
+
+    return true;
+};
+
+bool FiniteAutomata::isLanguageEquivalence(FiniteAutomata fa1, FiniteAutomata fa2)
+{
+    auto dfa1 = fa1.lnfa2nfa().nfa2dfa().dfa2minDfa();
+    auto dfa2 = fa2.lnfa2nfa().nfa2dfa().dfa2minDfa();
+
+    return isIsomorphism(dfa1, dfa2);
 };
 
 std::string FiniteAutomata::toString()

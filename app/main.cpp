@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "./finite_automata.hpp"
+#include "../src/finite_automata.hpp"
 
 void test(std::string testExpressionStr)
 {
@@ -44,7 +44,13 @@ void test(std::string testExpressionStr)
     std::cout << "recycled minDfa" << std::endl;
     std::cout << recycledMinDfa.toString() << std::endl << std::endl;
 
-    recycledMinDfa.exportGraph("./tests", "test1");
+    std::cout << "dfa iso minDfa: " << FiniteAutomata::isIsomorphism(dfa, minDfa) << std::endl;
+    std::cout << "minDfa iso recycled minDfa: " << FiniteAutomata::isIsomorphism(minDfa, recycledMinDfa) << std::endl;
+
+    std::cout << "lnfa lang eq minDfa: " << FiniteAutomata::isLanguageEquivalence(lnfa, minDfa) << std::endl;
+    std::cout << "lnfa lang eq recycled minDfa: " << FiniteAutomata::isLanguageEquivalence(lnfa, recycledMinDfa) << std::endl;
+
+    recycledMinDfa.exportGraph("./results", "img1");
 };
 
 int main()
