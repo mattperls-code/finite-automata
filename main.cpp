@@ -4,12 +4,12 @@
 
 void test(std::string testExpressionStr)
 {
-    RegularExpression re = RegularExpression::fromExpressionString(testExpressionStr);
+    RegularExpression inputRe = RegularExpression::fromExpressionString(testExpressionStr);
 
-    std::cout << "re" << std::endl;
-    std::cout << re.toString() << std::endl << std::endl;
+    std::cout << "input re" << std::endl;
+    std::cout << inputRe.toString() << std::endl << std::endl;
 
-    FiniteAutomata lnfa = FiniteAutomata::re2lnfa(re);
+    FiniteAutomata lnfa = FiniteAutomata::re2lnfa(inputRe);
 
     std::cout << "lnfa" << std::endl;
     std::cout << lnfa.toString() << std::endl << std::endl;
@@ -33,11 +33,21 @@ void test(std::string testExpressionStr)
 
     std::cout << "compressed minDfa" << std::endl;
     std::cout << compressedMinDfa.toString() << std::endl << std::endl;
+
+    RegularExpression outputRe = compressedMinDfa.lnfa2re();
+
+    std::cout << "output re" << std::endl;
+    std::cout << outputRe.toString() << std::endl << std::endl;
+
+    FiniteAutomata recycledMinDfa = FiniteAutomata::re2lnfa(outputRe).lnfa2nfa().nfa2dfa().dfa2minDfa().compressNames();
+
+    std::cout << "recycled minDfa" << std::endl;
+    std::cout << recycledMinDfa.toString() << std::endl << std::endl;
 };
 
 int main()
 {
-    test("λ + a(a + b)*b");
+    test("((b + a)( a + b ))*(ab + bc)* + (λ + e(e + g)) + e*g");
     
     return 0;
 };

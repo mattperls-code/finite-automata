@@ -21,7 +21,7 @@ std::string concatStrSet(std::unordered_set<std::string> strSet, std::string del
     return concat;
 };
 
-// transitionClass hash
+// transition class hash (see FiniteAutomata::getMinDfaEquivalenceClassIndexes)
 
 size_t std::hash<std::unordered_map<Letter, int>>::operator()(const std::unordered_map<Letter, int>& transitionClass) const
 {
@@ -80,8 +80,6 @@ RegularExpression RegularExpression::plus(RegularExpression re1, RegularExpressi
 
 RegularExpression RegularExpression::star(RegularExpression re)
 {
-    // TODO: handle lambda star
-
     return RegularExpression(RegularExpressionType::STAR, std::make_shared<RegularExpression>(re));
 };
 
@@ -103,6 +101,11 @@ RegularExpression RegularExpression::fromToken(Token token)
 
 RegularExpression RegularExpression::fromExpressionString(std::string expressionStr)
 {
+    // uses parser lib to construct expression tree from a re string, then pass to fromToken to build actual re
+
+    // combinators are a bit tricky here since it has to avoid left recursion
+    // to do this we use atomic expressions which dont self recurse and then build recursive operational expressions layer by layer
+
     ParserCombinator expression;
     
     auto whitespace = repetition(satisfy(is(' ')));
@@ -207,11 +210,13 @@ std::string RegularExpression::toString()
     if (this->type == CHARACTER) return std::string(1, std::get<char>(this->value));
 
     if (this->type == STAR) {
-        auto operandString = std::get<std::shared_ptr<RegularExpression>>(this->value)->toString();
+        auto operand = std::get<std::shared_ptr<RegularExpression>>(this->value);
 
-        if (operandString.size() == 1 || (!operandString.empty() && operandString[0] == '(')) return operandString + "*";
+        auto operandString = operand->toString();
 
-        return "(" + operandString + ")*";
+        if (operand->getType() == PLUS || operand->getType() == CONCAT) operandString = "(" + operandString + ")";
+
+        return operandString + "*";
     }
 
     auto operands = std::get<std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>>>(this->value);
@@ -219,10 +224,16 @@ std::string RegularExpression::toString()
     auto leftOperandString = operands.first->toString();
     auto rightOperandString = operands.second->toString();
 
-    if (this->type == CONCAT) return leftOperandString + rightOperandString;
+    if (this->type == PLUS) return leftOperandString + "+" + rightOperandString;
+    
+    // if either operand comes from a plus, it needs to be wrapped before concat to ensure correct distribution
 
-    return "(" + leftOperandString + "+" + rightOperandString + ")";
+    if (operands.first->getType() == PLUS) leftOperandString = "(" + leftOperandString + ")";
+    if (operands.second->getType() == PLUS) rightOperandString = "(" + rightOperandString + ")";
+
+    return leftOperandString + rightOperandString;
 };
+
 
 // finite automata
 
@@ -388,13 +399,95 @@ std::string FiniteAutomata::addStarRe(std::string startState, RegularExpression 
 
 FiniteAutomata FiniteAutomata::re2lnfa(RegularExpression re)
 {
-    FiniteAutomata lnfa = FiniteAutomata({ "ROOT" }, "ROOT", {}, {});
+    FiniteAutomata lnfa = FiniteAutomata({ "START" }, "START", {}, {});
 
-    std::string lnfaAcceptingState = lnfa.addRe("ROOT", re);
+    std::string lnfaAcceptingState = lnfa.addRe("START", re);
     
     lnfa.acceptingStates.insert(lnfaAcceptingState);
 
     return lnfa.compressNames();
+};
+
+FiniteAutomata FiniteAutomata::lnfa2renfa()
+{
+    // assume $START and $ACCEPT are not taken (should be guaranteed by FiniteAutomata::create, no internal methods add "$")
+    std::string renfaStartState = "$START";
+    std::string renfaAcceptState = "$ACCEPT";
+
+    auto renfaStates = this->states;
+    renfaStates.insert({ renfaStartState, renfaAcceptState });
+
+    std::unordered_set<std::string> renfaAcceptingStates = { renfaAcceptState };
+    auto renfaEdges = this->edges;
+
+    // ensure start and accept state are "pulled out" so renfa characteristics are met
+
+    renfaEdges.insert(Edge(renfaStartState, this->startState, {}));
+
+    for (auto originalAcceptingState : this->acceptingStates) renfaEdges.insert(Edge(originalAcceptingState, renfaAcceptState, {}));
+
+    return FiniteAutomata(renfaStates, renfaStartState, renfaAcceptingStates, renfaEdges);
+};
+
+RegularExpression FiniteAutomata::lnfa2re()
+{
+    auto renfa = this->lnfa2renfa();
+
+    // [startState][endState] = re
+    std::unordered_map<std::string, std::unordered_map<std::string, RegularExpression>> reTransitionTable;
+
+    // [endState][startState] = re
+    std::unordered_map<std::string, std::unordered_map<std::string, RegularExpression>> reInvertedTransitionTable;
+
+    for (auto edge : renfa.edges) {
+        auto edgeRe = edge.letter.has_value() ? RegularExpression::character(edge.letter.value()) : RegularExpression::empty();
+
+        // combine parallel edges with plus
+        auto updatedTransitionRe = reTransitionTable[edge.start].contains(edge.end) ? RegularExpression::plus(reTransitionTable[edge.start][edge.end], edgeRe) : edgeRe;
+        
+        reTransitionTable[edge.start][edge.end] = updatedTransitionRe;
+        reInvertedTransitionTable[edge.end][edge.start] = updatedTransitionRe;
+    }
+
+    // pruning could be done here by taking the intersection of reachable states traversing both directions, effectively removing "dead ends"
+
+    auto internalStates = renfa.states;
+    internalStates.erase(renfa.startState);
+    internalStates.erase(*renfa.acceptingStates.begin());
+
+    // "splice out" each internal state and insert new edges for every combination of incoming and outgoing edges
+    for (auto internalState : internalStates) {
+        // if the state being spliced has a self edge, the regular expression for that edge is starred and placed between the left and right expressions being joined
+        auto selfLoopRe = reTransitionTable[internalState].contains(internalState) ? RegularExpression::star(reTransitionTable[internalState][internalState]) : RegularExpression::empty();
+
+        auto transitionsEndingAtInternalState = reInvertedTransitionTable[internalState];
+        auto transitionsStartingAtInternalState = reTransitionTable[internalState];
+
+        transitionsEndingAtInternalState.erase(internalState);
+        transitionsStartingAtInternalState.erase(internalState);
+
+        // new edge to join each in-edge to each out-edge
+        for (auto [stateEndingAtInternalState, leftRe] : transitionsEndingAtInternalState) {
+            auto intermediaryJoiningRe = RegularExpression::concat(leftRe, selfLoopRe);
+
+            for (auto [stateStartingAtInternalState, rightRe] : transitionsStartingAtInternalState) {
+                auto completeJoiningRe = RegularExpression::concat(intermediaryJoiningRe, rightRe);
+
+                auto updatedTransitionRe = reTransitionTable[stateEndingAtInternalState].contains(stateStartingAtInternalState) ? RegularExpression::plus(reTransitionTable[stateEndingAtInternalState][stateStartingAtInternalState], completeJoiningRe) : completeJoiningRe;
+
+                reTransitionTable[stateEndingAtInternalState][stateStartingAtInternalState] = updatedTransitionRe;
+                reInvertedTransitionTable[stateStartingAtInternalState][stateEndingAtInternalState] = updatedTransitionRe;
+            }
+        }
+
+        // cleanup old edges, (first two erase calls dont really change anything but makes the map a bit neater)
+        reTransitionTable.erase(internalState);
+        reInvertedTransitionTable.erase(internalState);
+        for (auto [stateEndingAtInternalState, _] : transitionsEndingAtInternalState) reTransitionTable[stateEndingAtInternalState].erase(internalState);
+        for (auto [stateStartingAtInternalState, _] : transitionsStartingAtInternalState) reInvertedTransitionTable[stateStartingAtInternalState].erase(internalState);
+    }
+
+    return reTransitionTable[renfa.startState][*renfa.acceptingStates.begin()];
 };
 
 std::unordered_set<std::string> FiniteAutomata::getStatesDirectlyStartingAt(std::string state)
@@ -525,16 +618,19 @@ FiniteAutomata FiniteAutomata::lnfa2nfa()
 {
     if (!this->hasLambdaMoves()) return *this;
 
-    // some caching for transitive closure can be done here
+    // some caching for transitive closure should be done here (store map of lambda traversal in both directions for every state)
 
     std::unordered_set<std::string> nfaAcceptingStates;
 
+    // anything that can reach an accepting state via lambda moves is transitively accepting
     for (auto acceptingState : this->acceptingStates) nfaAcceptingStates.merge(this->getStatesTransitivelyEndingAt(acceptingState, {}));
 
     std::unordered_set<Edge> nfaEdges;
 
+    // for every non lambda edge from S via L to E, there should be an edge:
+    // from anything that can reach S via lambda moves, via L, to anything that can be reached from E via lambda moves
     for (auto edge : this->edges) {
-        if (!edge.letter.has_value()) continue; // only construct non lambda edges
+        if (!edge.letter.has_value()) continue;
         
         for (auto startState : this->getStatesTransitivelyEndingAt(edge.start, {})) {
             for (auto endState : this->getStatesTransitivelyStartingAt(edge.end, {})) {
@@ -556,6 +652,10 @@ FiniteAutomata FiniteAutomata::nfa2dfa()
     std::string dfaStartState = "{" + this->startState + "}";
     std::unordered_set<std::string> dfaAcceptingStates;
     std::unordered_set<Edge> dfaEdges;
+
+    // basically a normal bfs but "current" is a SET of states and traversals are the union of all moves within that set for a given letter
+    
+    // useful to note that by nature of taking bfs from start state, unreachable states are automatically pruned
 
     std::queue<std::unordered_set<std::string>> queue;
     queue.push({ this->startState });
@@ -592,15 +692,21 @@ FiniteAutomata FiniteAutomata::nfa2dfa()
 
 std::unordered_map<std::string, int> FiniteAutomata::getMinDfaEquivalenceClassIndexes()
 {
+    // ensures minimality since otherwise it might generate classes that arent actually reachable
     auto reachableStates = this->getStatesTransitivelyStartingAt(this->startState);
 
+    // [state] = equivalenceClassIndex
     std::unordered_map<std::string, int> equivalenceClassIndexes;
 
     // initial partition
     int numEquivalenceClasses = 2;
     for (auto state : reachableStates) equivalenceClassIndexes[state] = this->acceptingStates.contains(state);
 
+    // continue partitioning until minimal equivalence classes are found
     while (true) {
+        // partition by:
+        //      what equivalence class does a given letter result in        (transition class)
+        //      are states in this equivalence class accepting or not       (accepts)
         std::unordered_map<std::unordered_map<Letter, int>, std::unordered_set<std::string>> acceptingEquivalenceClasses;
         std::unordered_map<std::unordered_map<Letter, int>, std::unordered_set<std::string>> nonAcceptingEquivalenceClasses;
 
@@ -616,9 +722,13 @@ std::unordered_map<std::string, int> FiniteAutomata::getMinDfaEquivalenceClassIn
 
         int newNumEquivalenceClasses = acceptingEquivalenceClasses.size() + nonAcceptingEquivalenceClasses.size();
 
-        if (newNumEquivalenceClasses == numEquivalenceClasses) return equivalenceClassIndexes; // minimal partition found
+        // if there exists a further partition, the number of equivalence classes must change
+        // therefore this condition implies the minimal equivalence classes have been found
+        if (newNumEquivalenceClasses == numEquivalenceClasses) return equivalenceClassIndexes;
 
         numEquivalenceClasses = newNumEquivalenceClasses;
+
+        // reassign equivalence class indexes for next round of partitioning
 
         int equivalenceClassIndex = 0;
 
@@ -651,6 +761,7 @@ FiniteAutomata FiniteAutomata::dfa2minDfa()
     std::unordered_set<std::string> minDfaAcceptingStates;
     std::unordered_set<Edge> minDfaEdges;
 
+    // use a representative from each equivalence class to reconstruct the transition behavior and whether it accepts
     for (auto [_, memberStates] : minDfaEquivalenceClasses) {
         auto memberState = *memberStates.begin();
 
