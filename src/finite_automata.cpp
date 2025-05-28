@@ -600,12 +600,32 @@ FiniteAutomata FiniteAutomata::dfa2minDfa()
     return FiniteAutomata(minDfaStates, minDfaStartState, minDfaAcceptingStates, minDfaEdges);
 };
 
-FiniteAutomata FiniteAutomata::complement()
+FiniteAutomata FiniteAutomata::dfa2complement()
 {
-    std::unordered_set<std::string> complementAcceptingStates;
-    for (auto state : this->states) if (!this->acceptingStates.contains(state)) complementAcceptingStates.insert(state);
+    if (!this->isDeterministic()) throw std::runtime_error("FiniteAutomata complement: only callable for DFA");
 
-    return FiniteAutomata(this->states, this->startState, complementAcceptingStates, this->edges);
+    std::unordered_map<char, std::unordered_set<std::string>> presentTransitions;
+    for (auto edge : this->edges) presentTransitions[edge.letter.value()].insert(edge.start);
+    
+    auto complementStates = this->states;
+    auto complementEdges = this->edges;
+
+    // if it is not fully connected, add implied edges to emptyset, that way complement can include emptyset
+    if (this->edges.size() != this->states.size() * presentTransitions.size()) {
+        complementStates.insert("$EMPTY"); // assume state namespace doesnt have $EMPTY
+        
+        for (auto [letter, transitioningStates] : presentTransitions) {
+            for (auto complementState : complementStates) {
+                if (!transitioningStates.contains(complementState)) complementEdges.insert(Edge(complementState, "$EMPTY", letter));
+            }
+        }
+    }
+
+    // invert accepting
+    std::unordered_set<std::string> complementAcceptingStates;
+    for (auto complementState : complementStates) if (!this->acceptingStates.contains(complementState)) complementAcceptingStates.insert(complementState);
+
+    return FiniteAutomata(complementStates, this->startState, complementAcceptingStates, complementEdges);
 };
 
 bool FiniteAutomata::matches(std::string str)

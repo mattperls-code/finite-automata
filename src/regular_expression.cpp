@@ -193,7 +193,7 @@ std::string RegularExpression::toLatex()
 {
     std::string output;
 
-    output += "\\documentclass{article}";
+    output += "\\documentclass[border=10pt]{standalone}";
 
     output += "\n";
 
@@ -236,7 +236,7 @@ std::string RegularExpression::toLatex()
         }
     }
 
-    output += "{\\Huge \\[ " + escaped + " \\] }";
+    output += "$ " + escaped + " $";
 
     output += "\n";
 
@@ -250,20 +250,24 @@ void RegularExpression::exportExpression(std::string outputDirPath, std::string 
     std::filesystem::create_directories(outputDirPath);
 
     std::string latexOutputFilePath = outputDirPath + "/" + outputFileName + ".tex";
+    std::string pdfOutputFilePath = outputDirPath + "/" + outputFileName + ".pdf";
+    std::string pngOutputFilePath = outputDirPath + "/" + outputFileName + ".png";
 
     std::ofstream latexOutputFile(latexOutputFilePath);
-
     latexOutputFile << this->toLatex();
-
     latexOutputFile.close();
 
-    // pdflatex sometimes needs to be called twice
     std::string renderLaTeXCommand = 
         "pdflatex -output-directory=" + outputDirPath + " " + latexOutputFilePath + 
-        " > /dev/null 2>&1 && " + 
+        " > /dev/null 2>&1 && " +
         "pdflatex -output-directory=" + outputDirPath + " " + latexOutputFilePath + 
-        " > /dev/null 2>&1 && " + 
+        " > /dev/null 2>&1 && " +
         "rm -f " + outputDirPath + "/*.aux " + outputDirPath + "/*.log " + outputDirPath + "/*.out " + outputDirPath + "/*.toc";
 
     std::system(renderLaTeXCommand.c_str());
+
+    std::string convertPdfToPngCommand =
+        "pdftoppm -png -r 600 -singlefile \"" + pdfOutputFilePath + "\" \"" + outputDirPath + "/" + outputFileName + "\"";
+
+    std::system(convertPdfToPngCommand.c_str());
 };

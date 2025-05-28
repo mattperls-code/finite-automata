@@ -1,12 +1,21 @@
 #include <catch2/catch_all.hpp>
+#include <bitset>
 
 #include "../src/finite_automata.hpp"
 
 TEST_CASE("CONSTRUCTIONS") {
+    // str -> re
+
+    auto input1 = "a (b (b* + a + λ) + λ(a + (ab + b + λ)* bb)) b(ab)*";
+    auto expectedOutput1 = "a(b(b*+a+λ)+a+(ab+b+λ)*bb)b(ab)*";
+    auto observedOutput1 = RegularExpression::fromExpressionString(input1);
+
+    REQUIRE(expectedOutput1 == observedOutput1.toString());
+
     // re -> lnfa
 
-    auto input1 = RegularExpression::fromExpressionString("ab*(a+b(a+λ)) + (a + λ)");
-    auto expectedOutput1 = FiniteAutomata::create(
+    auto input2 = RegularExpression::fromExpressionString("ab*(a+b(a+λ)) + (a + λ)");
+    auto expectedOutput2 = FiniteAutomata::create(
         { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21" },
         "1",
         { "21" },
@@ -39,13 +48,13 @@ TEST_CASE("CONSTRUCTIONS") {
             Edge("20", "21", {}),
         }
     );
-    auto observedOutput1 = FiniteAutomata::re2lnfa(input1);
+    auto observedOutput2 = FiniteAutomata::re2lnfa(input2);
 
-    REQUIRE(FiniteAutomata::isLanguageEquivalence(expectedOutput1, observedOutput1));
+    REQUIRE(FiniteAutomata::isLanguageEquivalence(expectedOutput2, observedOutput2));
 
     // lnfa -> nfa
 
-    auto input2 = FiniteAutomata::create(
+    auto input3 = FiniteAutomata::create(
         { "A", "B", "C", "D", "E", "F" },
         "A",
         { "A", "F" },
@@ -65,7 +74,7 @@ TEST_CASE("CONSTRUCTIONS") {
             Edge("F", "F", 'a'),
         }
     );
-    auto expectedOutput2 = FiniteAutomata::create(
+    auto expectedOutput3 = FiniteAutomata::create(
         { "A", "B", "C", "D", "E", "F" },
         "A",
         { "A", "E", "F" },
@@ -90,13 +99,13 @@ TEST_CASE("CONSTRUCTIONS") {
             Edge("F", "F", 'a'),
         }
     );
-    auto observedOutput2 = input2.lnfa2nfa();
+    auto observedOutput3 = input3.lnfa2nfa();
 
-    REQUIRE(FiniteAutomata::isLanguageEquivalence(expectedOutput2, observedOutput2));
+    REQUIRE(FiniteAutomata::isLanguageEquivalence(expectedOutput3, observedOutput3));
 
     // nfa -> dfa
 
-    auto input3 = FiniteAutomata::create(
+    auto input4 = FiniteAutomata::create(
         { "A", "B", "C", "D", "E" },
         "A",
         { "B", "D" },
@@ -113,7 +122,7 @@ TEST_CASE("CONSTRUCTIONS") {
             Edge("E", "D", 'b'),
         }
     );
-    auto expectedOutput3 = FiniteAutomata::create(
+    auto expectedOutput4 = FiniteAutomata::create(
         { "A", "B", "C", "D", "E", "BE", "CE", "BD", "CDE" },
         "A",
         { "B", "D", "BE", "BD", "CDE" },
@@ -135,13 +144,13 @@ TEST_CASE("CONSTRUCTIONS") {
             Edge("CDE", "BD", 'b')
         }
     );
-    auto observedOutput3 = input3.nfa2dfa();
+    auto observedOutput4 = input4.nfa2dfa();
 
-    REQUIRE(FiniteAutomata::isIsomorphism(expectedOutput3, observedOutput3));
+    REQUIRE(FiniteAutomata::isIsomorphism(expectedOutput4, observedOutput4));
 
     // dfa -> min dfa
 
-    auto input4 = FiniteAutomata::create(
+    auto input5 = FiniteAutomata::create(
         { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11" },
         "0",
         { "0" },
@@ -172,7 +181,7 @@ TEST_CASE("CONSTRUCTIONS") {
             Edge("11", "11", '1')
         }
     );
-    auto expectedOutput4 = FiniteAutomata::create(
+    auto expectedOutput5 = FiniteAutomata::create(
         { "A", "B", "C", "D", "E" },
         "A",
         { "A" },
@@ -189,13 +198,13 @@ TEST_CASE("CONSTRUCTIONS") {
             Edge("E", "D", '1'),
         }
     );
-    auto observedOutput4 = input4.dfa2minDfa();
+    auto observedOutput5 = input5.dfa2minDfa();
 
-    REQUIRE(FiniteAutomata::isIsomorphism(expectedOutput4, observedOutput4));
+    REQUIRE(FiniteAutomata::isIsomorphism(expectedOutput5, observedOutput5));
 
     // dfa -> re
 
-    auto input5 = FiniteAutomata::create(
+    auto input6 = FiniteAutomata::create(
         { "A", "B", "C", "D", "E", "F" },
         "A",
         { "F" },
@@ -209,13 +218,79 @@ TEST_CASE("CONSTRUCTIONS") {
             Edge("E", "B", {}),
         }
     );
-    auto expectedOutput5 = RegularExpression::fromExpressionString("0(1 + 20)*0");
-    auto observedOutput5 = input5.lnfa2re();
+    auto expectedOutput6 = RegularExpression::fromExpressionString("0(1 + 20)*0");
+    auto observedOutput6 = input6.lnfa2re();
     
     REQUIRE(FiniteAutomata::isLanguageEquivalence(
-        FiniteAutomata::re2lnfa(expectedOutput5),
-        FiniteAutomata::re2lnfa(observedOutput5)
+        FiniteAutomata::re2lnfa(expectedOutput6),
+        FiniteAutomata::re2lnfa(observedOutput6)
     ));
+
+    // dfa -> complement
+
+    auto input7 = FiniteAutomata::create(
+        { "A", "B", "C", "D" },
+        "A",
+        { "A", "C" },
+        {
+            Edge("A", "B", 'a'),
+            Edge("B", "C", 'b'),
+            Edge("C", "B", 'a'),
+            Edge("C", "D", 'b'),
+            Edge("D", "A", 'b')
+        }
+    );
+    auto expectedOutput7 = FiniteAutomata::create(
+        { "A", "B", "C", "D", "EMPTY" },
+        "A",
+        { "B", "D", "EMPTY" },
+        {
+            Edge("A", "B", 'a'),
+            Edge("A", "EMPTY", 'b'),
+            Edge("B", "EMPTY", 'a'),
+            Edge("B", "C", 'b'),
+            Edge("C", "B", 'a'),
+            Edge("C", "D", 'b'),
+            Edge("D", "EMPTY", 'a'),
+            Edge("D", "A", 'b'),
+            Edge("EMPTY", "EMPTY", 'a'),
+            Edge("EMPTY", "EMPTY", 'b'),
+        }
+    );
+    auto observedOutput7 = input7.dfa2complement();
+
+    REQUIRE(FiniteAutomata::isIsomorphism(expectedOutput7, observedOutput7));
+
+    // matches
+
+    // f(x) = x congruent n mod m
+    std::unordered_set<int> n = { 1, 5 };
+    int m = 6;
+    
+    std::unordered_set<std::string> input8_states;
+    std::string input8_startState = "0";
+    std::unordered_set<std::string> input8_acceptingStates;
+    std::unordered_set<Edge> input8_edges;
+
+    for (int i = 0;i<m;i++) {
+        auto iStr = std::to_string(i);
+
+        input8_states.insert(iStr);
+
+        if (n.contains(i)) input8_acceptingStates.insert(iStr);
+        
+        input8_edges.insert(Edge(iStr, std::to_string((2 * i) % m), '0'));
+        input8_edges.insert(Edge(iStr, std::to_string((2 * i + 1) % m), '1'));
+    }
+
+    auto input8 = FiniteAutomata::create(input8_states, input8_startState, input8_acceptingStates, input8_edges);
+
+    for (int i = 0;i<10*m;i++) {
+        auto expectedOutput8 = n.contains(i % m);
+        auto observedOutput8 = input8.matches(std::bitset<8>(i).to_string());
+        
+        REQUIRE(expectedOutput8 == observedOutput8);
+    }
 }
 
 // https://people.cs.umass.edu/~barring/cs250f24/exams/finsol.pdf

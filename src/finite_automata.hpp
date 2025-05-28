@@ -58,8 +58,6 @@ class FiniteAutomata
         std::string addPlusRe(std::string rootState, RegularExpression re1, RegularExpression re2);
         std::string addStarRe(std::string rootState, RegularExpression re);
 
-        FiniteAutomata lnfa2renfa();
-
         std::unordered_set<std::string> getStatesDirectlyStartingAt(std::string state);
         std::unordered_set<std::string> getStatesDirectlyStartingAt(std::string state, Letter letter);
         std::unordered_set<std::string> getStatesTransitivelyStartingAt(std::string state);
@@ -82,6 +80,8 @@ class FiniteAutomata
 
         static FiniteAutomata re2lnfa(RegularExpression re);
 
+        FiniteAutomata lnfa2renfa();
+
         RegularExpression lnfa2re();
 
         FiniteAutomata lnfa2nfa();
@@ -90,7 +90,7 @@ class FiniteAutomata
 
         FiniteAutomata dfa2minDfa();
 
-        FiniteAutomata complement();
+        FiniteAutomata dfa2complement();
 
         bool matches(std::string str);
 

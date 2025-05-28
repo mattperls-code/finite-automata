@@ -4,17 +4,24 @@
 
 int main()
 {
+    // str -> re
+
+    auto input1 = "a (b (b* + a + λ) + λ(a + (ab + b + λ)* bb)) b(ab)*";
+    auto output1 = RegularExpression::fromExpressionString(input1);
+
+    output1.exportExpression("./examples/str2re", "output");
+
     // re -> lnfa
 
-    auto input1 = RegularExpression::fromExpressionString("ab*(a+b(a+λ)) + (a + λ)");
-    auto output1 = FiniteAutomata::re2lnfa(input1);
+    auto input2 = RegularExpression::fromExpressionString("ab*(a+b(a+λ)) + (a + λ)");
+    auto output2 = FiniteAutomata::re2lnfa(input2);
     
-    input1.exportExpression("./results/re2lnfa", "input");
-    output1.exportGraph("./results/re2lnfa", "output");
+    input2.exportExpression("./examples/re2lnfa", "input");
+    output2.exportGraph("./examples/re2lnfa", "output");
 
     // lnfa -> nfa
 
-    auto input2 = FiniteAutomata::create(
+    auto input3 = FiniteAutomata::create(
         { "A", "B", "C", "D", "E", "F" },
         "A",
         { "A", "F" },
@@ -34,14 +41,14 @@ int main()
             Edge("F", "F", 'a'),
         }
     );
-    auto output2 = input2.lnfa2nfa();
+    auto output3 = input3.lnfa2nfa();
 
-    input2.exportGraph("./results/lnfa2nfa", "input");
-    output2.exportGraph("./results/lnfa2nfa", "output");
+    input3.exportGraph("./examples/lnfa2nfa", "input");
+    output3.exportGraph("./examples/lnfa2nfa", "output");
 
     // nfa -> dfa
 
-    auto input3 = FiniteAutomata::create(
+    auto input4 = FiniteAutomata::create(
         { "A", "B", "C", "D", "E" },
         "A",
         { "B", "D" },
@@ -58,14 +65,14 @@ int main()
             Edge("E", "D", 'b'),
         }
     );
-    auto output3 = input3.nfa2dfa();
+    auto output4 = input4.nfa2dfa();
 
-    input3.exportGraph("./results/nfa2dfa", "input");
-    output3.exportGraph("./results/nfa2dfa", "output");
+    input4.exportGraph("./examples/nfa2dfa", "input");
+    output4.exportGraph("./examples/nfa2dfa", "output");
 
     // dfa -> min dfa
 
-    auto input4 = FiniteAutomata::create(
+    auto input5 = FiniteAutomata::create(
         { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11" },
         "0",
         { "0" },
@@ -96,14 +103,14 @@ int main()
             Edge("11", "11", '1')
         }
     );
-    auto output4 = input4.dfa2minDfa();
+    auto output5 = input5.dfa2minDfa();
 
-    input4.exportGraph("./results/dfa2minDfa", "input");
-    output4.exportGraph("./results/dfa2minDfa", "output");
+    input5.exportGraph("./examples/dfa2minDfa", "input");
+    output5.exportGraph("./examples/dfa2minDfa", "output");
 
     // dfa -> re
 
-    auto input5 = FiniteAutomata::create(
+    auto input6 = FiniteAutomata::create(
         { "A", "B", "C", "D", "E", "F" },
         "A",
         { "F" },
@@ -117,10 +124,55 @@ int main()
             Edge("E", "B", {}),
         }
     );
-    auto output5 = input5.lnfa2re();
+    auto output6 = input6.lnfa2re();
 
-    input5.exportGraph("./results/dfa2re", "input");
-    output5.exportExpression("./results/dfa2re", "output");
+    input6.exportGraph("./examples/dfa2re", "input");
+    output6.exportExpression("./examples/dfa2re", "output");
+
+    // dfa -> complement
+
+    auto input7 = FiniteAutomata::create(
+        { "A", "B", "C", "D" },
+        "A",
+        { "A", "C" },
+        {
+            Edge("A", "B", 'a'),
+            Edge("B", "C", 'b'),
+            Edge("C", "B", 'a'),
+            Edge("C", "D", 'b'),
+            Edge("D", "A", 'b'),
+        }
+    );
+    auto output7 = input7.dfa2complement();
+
+    input7.exportGraph("./examples/dfa2complement", "input");
+    output7.exportGraph("./examples/dfa2complement", "output");
+
+    // matches
+
+    // f(x) = x congruent n mod m
+    std::unordered_set<int> n = { 1, 5 };
+    int m = 6;
+    
+    std::unordered_set<std::string> input8_states;
+    std::string input8_startState = "0";
+    std::unordered_set<std::string> input8_acceptingStates;
+    std::unordered_set<Edge> input8_edges;
+
+    for (int i = 0;i<m;i++) {
+        auto iStr = std::to_string(i);
+
+        input8_states.insert(iStr);
+
+        if (n.contains(i)) input8_acceptingStates.insert(iStr);
+        
+        input8_edges.insert(Edge(iStr, std::to_string((2 * i) % m), '0'));
+        input8_edges.insert(Edge(iStr, std::to_string((2 * i + 1) % m), '1'));
+    }
+
+    auto input8 = FiniteAutomata::create(input8_states, input8_startState, input8_acceptingStates, input8_edges);
+
+    input8.exportGraph("./examples/matches", "input");
     
     return 0;
 };
