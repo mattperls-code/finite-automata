@@ -20,16 +20,23 @@ class RegularExpression
 {
     private:
         RegularExpressionType type;
-
-        typedef std::variant<
+        
+        std::variant<
             std::monostate,
             char,
             std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>>,
             std::shared_ptr<RegularExpression>
-        > Value;
-        Value value;
+        > value;
 
-        RegularExpression(RegularExpressionType type, Value value): type(type), value(value) {};
+        RegularExpression(
+            RegularExpressionType type,
+            std::variant<
+                std::monostate,
+                char,
+                std::pair<std::shared_ptr<RegularExpression>, std::shared_ptr<RegularExpression>>,
+                std::shared_ptr<RegularExpression>
+            > value
+        ): type(type), value(value) {};
 
     public:
         RegularExpression() = default;
@@ -52,6 +59,9 @@ class RegularExpression
         std::shared_ptr<RegularExpression> getStarExpression();
 
         std::string toString();
+        std::string toLatex();
+
+        void exportExpression(std::string outputDirPath, std::string outputFileName);
 };
 
 #endif

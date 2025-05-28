@@ -15,8 +15,6 @@ TEST_SOURCES := $(shell find $(TEST_DIR) -name '*.cpp')
 APP_TARGET := main
 TEST_TARGET := test
 
-.PHONY: all clean
-
 all: $(APP_TARGET)
 
 $(APP_TARGET): $(APP_MAIN) $(IMPL_SOURCES)
@@ -25,5 +23,6 @@ $(APP_TARGET): $(APP_MAIN) $(IMPL_SOURCES)
 $(TEST_TARGET): $(TEST_SOURCES) $(IMPL_SOURCES)
 	$(CXX) $(CXXFLAGS) -I/opt/homebrew/include -o $@ $^ -L/opt/homebrew/lib -lcatch2
 
+.PHONY: all clean
 clean:
 	rm -f $(APP_TARGET) $(TEST_TARGET)

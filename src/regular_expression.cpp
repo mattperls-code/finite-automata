@@ -1,3 +1,7 @@
+#include <fstream>
+#include <cstdlib>
+#include <filesystem>
+
 #include "regular_expression.hpp"
 
 RegularExpression RegularExpression::empty()
@@ -183,4 +187,83 @@ std::string RegularExpression::toString()
     if (operands.second->getType() == PLUS) rightOperandString = "(" + rightOperandString + ")";
 
     return leftOperandString + rightOperandString;
+};
+
+std::string RegularExpression::toLatex()
+{
+    std::string output;
+
+    output += "\\documentclass{article}";
+
+    output += "\n";
+
+    output += "\\usepackage{amsmath}";
+
+    output += "\n";
+
+    output += "\\begin{document}";
+
+    output += "\n";
+
+    std::string raw = this->toString();
+    std::string escaped;
+    
+    while (!raw.empty()) {
+        if (raw.starts_with("λ")) {
+            escaped += "\\lambda";
+            
+            raw.erase(raw.begin(), raw.begin() + std::string("λ").size());
+        }
+        else {
+            char c = raw.front();
+
+            if (c == '\\') escaped += "\\textbackslash{}";
+            else if (
+                c == '{' ||
+                c == '}' ||
+                c == '_' ||
+                c == '^' ||
+                c == '$' ||
+                c == '&' ||
+                c == '#' ||
+                c == '%' ||
+                c == '~'
+            ) escaped += "\\" + std::string(c, 1);
+            else if(c == '*') escaped += "^*";
+            else escaped += c;
+
+            raw.erase(raw.begin());
+        }
+    }
+
+    output += "{\\Huge \\[ " + escaped + " \\] }";
+
+    output += "\n";
+
+    output += "\\end{document}";
+
+    return output;
+};
+
+void RegularExpression::exportExpression(std::string outputDirPath, std::string outputFileName)
+{
+    std::filesystem::create_directories(outputDirPath);
+
+    std::string latexOutputFilePath = outputDirPath + "/" + outputFileName + ".tex";
+
+    std::ofstream latexOutputFile(latexOutputFilePath);
+
+    latexOutputFile << this->toLatex();
+
+    latexOutputFile.close();
+
+    // pdflatex sometimes needs to be called twice
+    std::string renderLaTeXCommand = 
+        "pdflatex -output-directory=" + outputDirPath + " " + latexOutputFilePath + 
+        " > /dev/null 2>&1 && " + 
+        "pdflatex -output-directory=" + outputDirPath + " " + latexOutputFilePath + 
+        " > /dev/null 2>&1 && " + 
+        "rm -f " + outputDirPath + "/*.aux " + outputDirPath + "/*.log " + outputDirPath + "/*.out " + outputDirPath + "/*.toc";
+
+    std::system(renderLaTeXCommand.c_str());
 };

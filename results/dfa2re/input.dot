@@ -1,0 +1,15 @@
+digraph FiniteAutomata {
+	rankdir=LR;
+	nodesep=1.0;
+	ranksep=1.0;
+	"$" [shape=point, style=invis, width=0];
+	"$" -> "A";
+	"F" [penwidth=5];
+	"A" -> "B" [label="0"];
+	"B" -> "C" [label="2"];
+	"B" -> "E" [label="1"];
+	"B" -> "F" [label="0"];
+	"C" -> "D" [label="0"];
+	"D" -> "B" [label="λ"];
+	"E" -> "B" [label="λ"];
+}
