@@ -1,6 +1,6 @@
 # Finite Automata
 
-## Bidirection Conversions Between:
+## Bidirectional Conversions Between:
  - expression string    (regular expression in human readable form)
  - regular expression   (regular expression in tree form)
  - λNFA                 (finite automata with λ edges)
