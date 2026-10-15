@@ -38,6 +38,8 @@ class RegularExpression
             > value
         ): type(type), value(value) {};
 
+        static RegularExpression fromToken(Token token);
+
     public:
         RegularExpression() = default;
 
@@ -46,8 +48,6 @@ class RegularExpression
         static RegularExpression concat(RegularExpression re1, RegularExpression re2);
         static RegularExpression plus(RegularExpression re1, RegularExpression re2);
         static RegularExpression star(RegularExpression re);
-
-        static RegularExpression fromToken(Token token);
 
         static RegularExpression fromExpressionString(std::string expressionStr);
 
