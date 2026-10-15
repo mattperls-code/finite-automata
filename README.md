@@ -270,3 +270,11 @@ void FiniteAutomata::exportGraph(
 N = { 1, 5 }, M = 6
 
 <img src="./examples/matches/input.png" width="800"/>
+
+## Contributing
+
+TODO
+
+## License
+
+TODO
