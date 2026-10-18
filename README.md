@@ -17,11 +17,11 @@ To address this need, our library exposes functions for constructing, converting
   - Language Complement -->
 
 - [Installation](#installation)
-
 - [Library Usage](#library-usage)
-
+- [Example Code](#example-code)
 - [Visualized Examples](#visualized-examples)
-
+- [Contributing](#contributing)
+- [License](#license)
 
 <!-- ## Algorithmic Overview -->
 
@@ -221,7 +221,15 @@ void FiniteAutomata::exportGraph(
 );
 ```
 
+## Example Code
+
+The [app directory](https://github.com/mattperls-code/finite-automata/tree/main/app) contains example code snippets for the library.
+
+Remember to change the include directory to your ```path/to/include```.
+
 ## Visualized Examples
+
+Conversion input above. Generated output below.
 
 ### Formal Syntax String to Regular Expression
 
@@ -270,3 +278,12 @@ void FiniteAutomata::exportGraph(
 N = { 1, 5 }, M = 6
 
 <img src="./examples/matches/input.png" width="800"/>
+
+## Contributing
+
+To contibute to this project, please submit a [Pull Request](https://github.com/mattperls-code/finite-automata/pulls) documenting what features have been changed or added.
+There are no new features currently in development, but if you have ideas to collaborate on please reach out to [mperlman@umass.edu](mailto:mperlman@umass.edu).
+
+## License
+
+Code released under the [MIT License](https://github.com/mattperls-code/finite-automata/blob/main/license).
